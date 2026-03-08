@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ипотечный калькулятор</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
   <style>
     :root {
       --bg: #f3f6fb;
@@ -49,6 +50,44 @@
       padding: 8px 12px;
       cursor: pointer;
       font-weight: 600;
+      min-height: 40px;
+      display: inline-flex;
+      align-items: center;
+      line-height: 1;
+    }
+
+    .save-toggle {
+      position: fixed;
+      top: 14px;
+      right: 14px;
+      z-index: 10;
+      border: 1px solid var(--border);
+      background: var(--primary);
+      color: #fff;
+      border-radius: 10px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: 700;
+      min-height: 40px;
+      display: inline-flex;
+      align-items: center;
+      line-height: 1;
+    }
+
+    .scroll-toggle {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 10;
+      border: 1px solid var(--border);
+      background: var(--primary);
+      color: #fff;
+      border-radius: 999px;
+      padding: 10px 12px;
+      cursor: pointer;
+      font-weight: 700;
+      min-width: 44px;
+      min-height: 44px;
     }
 
     .container {
@@ -80,14 +119,23 @@
     .field { display: flex; flex-direction: column; gap: 6px; }
     label { font-size: 14px; font-weight: 600; }
 
+    input, select, button {
+      font-family: inherit;
+      font-size: 15px;
+    }
+
     input, select {
       border: 1px solid var(--border);
       border-radius: 10px;
       background: var(--card);
       color: var(--text);
       padding: 10px 12px;
-      font-size: 15px;
       width: 100%;
+    }
+
+    input[type="date"] {
+      font-family: inherit;
+      letter-spacing: 0;
     }
 
     input[readonly] { opacity: .9; font-weight: 700; }
@@ -168,6 +216,45 @@
       border-radius: 12px;
       padding: 12px;
       background: var(--card);
+      position: relative;
+    }
+
+    .help-dot {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      cursor: help;
+      background: var(--card);
+      color: var(--text);
+    }
+
+    .help-tooltip {
+      position: absolute;
+      right: 10px;
+      top: 36px;
+      width: min(420px, 92vw);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      box-shadow: var(--shadow);
+      font-size: 12px;
+      color: var(--text);
+      display: none;
+      z-index: 3;
+    }
+
+    .help-dot:hover + .help-tooltip,
+    .help-tooltip:hover {
+      display: block;
     }
 
     .metric { margin: 6px 0; }
@@ -212,12 +299,15 @@
 
     @media (max-width: 700px) {
       h1 { font-size: 24px; }
-      .container { margin-top: 62px; }
+      .container { margin-top: 72px; }
+      .theme-toggle, .save-toggle { top: 10px; }
     }
   </style>
 </head>
 <body>
   <button class="theme-toggle" id="themeToggle">Черный режим</button>
+  <button class="save-toggle" id="saveBtn">Сохранить</button>
+  <button class="scroll-toggle" id="scrollToggle" title="Вниз">↓</button>
 
   <div class="container">
     <section class="section">
@@ -242,6 +332,10 @@
           <input id="loanYears" type="number" min="1" step="1" value="30" />
         </div>
         <div class="field">
+          <label for="mortgageStartDate">Дата взятия ипотеки</label>
+          <input id="mortgageStartDate" type="date" value="2024-01-01" />
+        </div>
+        <div class="field">
           <label for="monthlyPayment">Ежемесячный платеж (авторасчет)</label>
           <input id="monthlyPayment" type="text" readonly />
         </div>
@@ -257,10 +351,10 @@
       </div>
 
       <div class="actions">
-        <button class="primary" id="calculateBtn">Рассчитать</button>
         <span class="hint">Изменения в форме пересчитывают результат автоматически. В карточках всегда показываются все 4 сценария.</span>
       </div>
       <div class="status" id="statusText"></div>
+      <div class="hint">Изменения сохраняются автоматически в вашем браузере (localStorage).</div>
     </section>
 
     <section class="section">
@@ -327,8 +421,8 @@
         <table>
           <thead>
             <tr>
+              <th>Дата</th>
               <th>Месяц</th>
-              <th>Сценарий</th>
               <th>Платеж</th>
               <th>Проценты</th>
               <th>Тело кредита</th>
@@ -351,13 +445,15 @@
       annualRate: document.getElementById('annualRate'),
       loanYears: document.getElementById('loanYears'),
       monthlyPayment: document.getElementById('monthlyPayment'),
-      calculateBtn: document.getElementById('calculateBtn'),
+      mortgageStartDate: document.getElementById('mortgageStartDate'),
       resultsCards: document.getElementById('resultsCards'),
       balanceChart: document.getElementById('balanceChart'),
       tableScenario: document.getElementById('tableScenario'),
       amortizationBody: document.getElementById('amortizationBody'),
       strategyRadios: document.querySelectorAll('input[name="strategy"]'),
       themeToggle: document.getElementById('themeToggle'),
+      saveBtn: document.getElementById('saveBtn'),
+      scrollToggle: document.getElementById('scrollToggle'),
       statusText: document.getElementById('statusText'),
       prepayAmount: document.getElementById('prepayAmount'),
       prepayStartMonth: document.getElementById('prepayStartMonth'),
@@ -505,16 +601,26 @@
     function simulateReducePayment(args) { return simulateLoan({ ...args, strategy: 'payment' }); }
     function simulateCombinedStrategy(args) { return simulateLoan({ ...args, strategy: 'combined' }); }
 
+    function scenarioHelpHtml(key) {
+      const common = String.raw`Аннуитет: \(A = P \cdot \frac{r}{1-(1+r)^{-n}}\)<br>Где: \(P\) — сумма долга, \(r\) — месячная ставка, \(n\) — число месяцев, \(A\) — платеж.`;
+      if (key === 'baseline') return `${common}<br><br>${String.raw`Без досрочного: \(Extra_m = 0\), остаток на шаге \(m\): \(B_m = B_{m-1} - (A - I_m)\), \(I_m = B_{m-1} \cdot r\).`}`;
+      if (key === 'term') return `${common}<br><br>${String.raw`Уменьшение срока: при досрочном \(Extra_m > 0\) сохраняем \(A=const\), срок уменьшается за счет более быстрого снижения \(B_m\).`}`;
+      if (key === 'payment') return `${common}<br><br>${String.raw`Уменьшение платежа: после досрочного пересчет \(A_{new} = B_m \cdot \frac{r}{1-(1+r)^{-n_{left}}}\), срок \(n_{left}\) сохраняется.`}`;
+      return `${common}<br><br>${String.raw`Комбинированная: после досрочного считаем \(A_{req}\), но платим \(A_{orig}\). Доп. в тело каждый месяц: \(Extra_m = A_{orig} - A_{req}\), если \(Extra_m > 0\).`}`;
+    }
+
     function renderResults(data) {
       const baselineInterest = data.baseline.totalInterest;
       const cards = [
-        ['Без досрочного погашения', data.baseline],
-        ['Досрочное погашение (уменьшение срока)', data.term],
-        ['Досрочное погашение (уменьшение платежа)', data.payment],
-        ['Комбинированная стратегия', data.combined]
-      ].map(([title, item]) => {
+        ['baseline', 'Без досрочного погашения', data.baseline],
+        ['term', 'Досрочное погашение (уменьшение срока)', data.term],
+        ['payment', 'Досрочное погашение (уменьшение платежа)', data.payment],
+        ['combined', 'Комбинированная стратегия', data.combined]
+      ].map(([key, title, item]) => {
         const saving = Math.max(0, baselineInterest - item.totalInterest);
         return `<article class="card">
+          <span class="help-dot" aria-label="Подсказка">?</span>
+          <div class="help-tooltip">${scenarioHelpHtml(key)}</div>
           <h3>${title}</h3>
           <p class="metric">Общая переплата: <b>${formatMoney(item.totalInterest)}</b></p>
           <p class="metric">Срок кредита: <b>${formatTerm(item.totalMonths)}</b></p>
@@ -523,6 +629,9 @@
       }).join('');
 
       els.resultsCards.innerHTML = cards;
+      if (window.MathJax && window.MathJax.typesetPromise) {
+        window.MathJax.typesetPromise([els.resultsCards]).catch(() => {});
+      }
     }
 
     function buildBalanceSeries(records, maxLen) {
@@ -539,7 +648,13 @@
         data.payment.records.length,
         data.combined.records.length
       );
-      const labels = Array.from({ length: maxLen }, (_, i) => i + 1);
+      const baseDate = els.mortgageStartDate.value ? new Date(`${els.mortgageStartDate.value}T00:00:00`) : new Date();
+      const labels = Array.from({ length: maxLen }, (_, i) => {
+        const d = addMonths(baseDate, i);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        return `${y}-${m}`;
+      });
 
       const datasets = [
         { label: 'Без досрочного', borderColor: '#64748b', data: buildBalanceSeries(data.baseline.records, maxLen) },
@@ -555,7 +670,16 @@
         options: {
           maintainAspectRatio: false,
           scales: {
-            x: { title: { display: true, text: 'Месяц' } },
+            x: {
+              title: { display: true, text: 'Год' },
+              ticks: {
+                callback: (value, index) => {
+                  const label = labels[index] || '';
+                  const [year, month] = label.split('-');
+                  return (index === 0 || month === '01') ? year : '';
+                }
+              }
+            },
             y: {
               title: { display: true, text: 'Остаток долга, ₽' },
               ticks: { callback: (v) => formatRuNumber(v, 0) }
@@ -563,7 +687,16 @@
           },
           plugins: {
             tooltip: {
-              callbacks: { label: (ctx) => `${ctx.dataset.label}: ${formatMoney(ctx.raw ?? 0)}` }
+              callbacks: {
+                title: (items) => {
+                  const lbl = items?.[0]?.label || '';
+                  if (!lbl) return '';
+                  const [y, m] = lbl.split('-');
+                  const dt = new Date(Number(y), Number(m) - 1, 1);
+                  return formatMonthDate(dt);
+                },
+                label: (ctx) => `${ctx.dataset.label}: ${formatMoney(ctx.raw ?? 0)}`
+              }
             }
           }
         }
@@ -573,18 +706,32 @@
       window.chart = chart;
     }
 
-    function renderTable(records, scenarioName) {
-      els.amortizationBody.innerHTML = records.map(r => `
+    function addMonths(date, monthsToAdd) {
+      const d = new Date(date.getTime());
+      d.setMonth(d.getMonth() + monthsToAdd);
+      return d;
+    }
+
+    function formatMonthDate(dateObj) {
+      return new Intl.DateTimeFormat('ru-RU', { year: 'numeric', month: 'long' }).format(dateObj);
+    }
+
+    function renderTable(records) {
+      const baseDate = els.mortgageStartDate.value ? new Date(`${els.mortgageStartDate.value}T00:00:00`) : new Date();
+      els.amortizationBody.innerHTML = records.map(r => {
+        const rowDate = addMonths(baseDate, r.month - 1);
+        return `
         <tr>
+          <td>${formatMonthDate(rowDate)}</td>
           <td>${r.month}</td>
-          <td>${scenarioName}</td>
           <td>${formatMoney(r.payment)}</td>
           <td>${formatMoney(r.interest)}</td>
           <td>${formatMoney(r.principal)}</td>
           <td>${formatMoney(r.extra)}</td>
           <td>${formatMoney(r.balance)}</td>
         </tr>
-      `).join('');
+      `;
+      }).join('');
     }
 
     function renderEarlyPaymentsList() {
@@ -619,7 +766,8 @@
         propertyCost: parseRuNumber(els.propertyCost.value),
         initialPayment: parseRuNumber(els.initialPayment.value),
         annualRate: Math.max(0, Number(els.annualRate.value)),
-        loanYears: Math.max(1, Number(els.loanYears.value))
+        loanYears: Math.max(1, Number(els.loanYears.value)),
+        mortgageStartDate: els.mortgageStartDate.value
       };
     }
 
@@ -632,7 +780,7 @@
       };
       const key = els.tableScenario.value;
       const scenario = scenarios[key] || scenarios.baseline;
-      if (scenario) renderTable(scenario.records, names[key]);
+      if (scenario) renderTable(scenario.records);
     }
 
     function saveState() {
@@ -642,7 +790,8 @@
           propertyCost: parseRuNumber(els.propertyCost.value),
           initialPayment: parseRuNumber(els.initialPayment.value),
           annualRate: Number(els.annualRate.value),
-          loanYears: Number(els.loanYears.value)
+          loanYears: Number(els.loanYears.value),
+          mortgageStartDate: els.mortgageStartDate.value
         },
         earlyPayments,
         selectedStrategy,
@@ -662,6 +811,7 @@
           els.initialPayment.value = formatRuNumber(state.inputs.initialPayment ?? parseRuNumber(els.initialPayment.value));
           els.annualRate.value = state.inputs.annualRate ?? els.annualRate.value;
           els.loanYears.value = state.inputs.loanYears ?? els.loanYears.value;
+          els.mortgageStartDate.value = state.inputs.mortgageStartDate ?? els.mortgageStartDate.value;
         }
         if (Array.isArray(state.earlyPayments)) {
           earlyPayments = state.earlyPayments
@@ -802,7 +952,7 @@
 
     moneyInputs.forEach(wireMoneyInput);
 
-    [els.annualRate, els.loanYears].forEach(el => {
+    [els.annualRate, els.loanYears, els.mortgageStartDate].forEach(el => {
       el.addEventListener('input', calculateAll);
       el.addEventListener('change', calculateAll);
     });
@@ -819,7 +969,10 @@
       calculateAll();
     }));
 
-    els.calculateBtn.addEventListener('click', calculateAll);
+    els.saveBtn.addEventListener('click', () => {
+      saveState();
+      els.statusText.textContent = 'Данные сохранены вручную в localStorage.';
+    });
 
     els.themeToggle.addEventListener('click', () => {
       document.body.classList.toggle('theme-dark');
@@ -833,6 +986,19 @@
     els.cancelEditBtn.addEventListener('click', resetPrepayEditor);
     els.prepayListBody.addEventListener('click', handlePrepayTableClick);
 
+    els.scrollToggle.addEventListener('click', () => {
+      const atBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 8;
+      window.scrollTo({ top: atBottom ? 0 : document.body.scrollHeight, behavior: 'smooth' });
+    });
+
+    window.addEventListener('scroll', updateScrollToggle);
+
+    function updateScrollToggle() {
+      const atBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 8;
+      els.scrollToggle.textContent = atBottom ? '↑' : '↓';
+      els.scrollToggle.title = atBottom ? 'Наверх' : 'Вниз';
+    }
+
     // Инициализация
     loadState();
     moneyInputs.forEach(input => {
@@ -841,6 +1007,7 @@
     updateStrategySelection();
     renderEarlyPaymentsList();
     calculateAll();
+    updateScrollToggle();
   </script>
 </body>
 </html>
