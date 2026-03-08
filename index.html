@@ -52,7 +52,7 @@
     }
 
     .container {
-      max-width: 1180px;
+      max-width: 1220px;
       margin: 56px auto 30px;
       padding: 0 14px;
       display: grid;
@@ -67,9 +67,8 @@
       padding: 18px;
     }
 
-    h1, h2 { margin: 0 0 14px; }
+    h1, h2, h3 { margin: 0 0 12px; }
     h1 { font-size: 28px; }
-
     .subtitle { color: var(--muted); margin-bottom: 12px; }
 
     .input-grid {
@@ -79,7 +78,6 @@
     }
 
     .field { display: flex; flex-direction: column; gap: 6px; }
-
     label { font-size: 14px; font-weight: 600; }
 
     input, select {
@@ -92,7 +90,7 @@
       width: 100%;
     }
 
-    input[readonly] { opacity: 0.9; font-weight: 700; }
+    input[readonly] { opacity: .9; font-weight: 700; }
 
     .radio-group {
       display: flex;
@@ -115,9 +113,7 @@
       transition: all .15s ease;
     }
 
-    .strategy-option input {
-      display: none;
-    }
+    .strategy-option input { display: none; }
 
     .strategy-option span {
       font-weight: 600;
@@ -128,23 +124,17 @@
     .strategy-option.is-active {
       border: 2px solid #ffffff;
       font-weight: 800;
-      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.45);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.45);
     }
 
     body:not(.theme-dark) .strategy-option.is-active {
       border-color: #111827;
-      box-shadow: inset 0 0 0 1px rgba(17,24,39,0.2);
+      box-shadow: inset 0 0 0 1px rgba(17,24,39,.2);
     }
 
-    .actions {
-      margin-top: 14px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
+    .actions { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 
-    button.calc {
+    button.primary {
       border: none;
       border-radius: 10px;
       padding: 10px 16px;
@@ -154,7 +144,18 @@
       cursor: pointer;
     }
 
+    button.secondary {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      background: var(--card);
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 600;
+    }
+
     .hint { font-size: 13px; color: var(--muted); }
+    .status { margin-top: 8px; font-size: 13px; color: var(--muted); }
 
     .cards {
       display: grid;
@@ -169,21 +170,27 @@
       background: var(--card);
     }
 
-    .card h3 { margin: 0 0 10px; font-size: 17px; }
     .metric { margin: 6px 0; }
     .metric b { margin-left: 6px; }
-
     .saving { color: var(--success); }
+
+    .prepay-grid {
+      display: grid;
+      grid-template-columns: 1.3fr .9fr 1fr auto auto;
+      gap: 10px;
+      align-items: end;
+    }
 
     .table-wrap {
       overflow: auto;
       border: 1px solid var(--border);
       border-radius: 12px;
+      margin-top: 10px;
     }
 
     table {
       width: 100%;
-      min-width: 900px;
+      min-width: 860px;
       border-collapse: collapse;
       background: var(--card);
     }
@@ -196,18 +203,11 @@
       white-space: nowrap;
     }
 
-    th {
-      background: color-mix(in srgb, var(--card) 82%, var(--text) 18%);
-      position: sticky;
-      top: 0;
-    }
-
+    th { background: color-mix(in srgb, var(--card) 82%, var(--text) 18%); position: sticky; top: 0; }
     th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
 
-    .status {
-      margin-top: 6px;
-      color: var(--muted);
-      font-size: 13px;
+    @media (max-width: 980px) {
+      .prepay-grid { grid-template-columns: 1fr; }
     }
 
     @media (max-width: 700px) {
@@ -245,39 +245,61 @@
           <label for="monthlyPayment">Ежемесячный платеж (авторасчет)</label>
           <input id="monthlyPayment" type="text" readonly />
         </div>
-        <div class="field">
-          <label for="extraPayment">Дополнительный платеж</label>
-          <input id="extraPayment" type="text" inputmode="decimal" value="32 000" />
-        </div>
-        <div class="field">
-          <label for="earlyMonth">Месяц досрочного платежа</label>
-          <input id="earlyMonth" type="number" min="1" step="1" value="2" />
-        </div>
       </div>
 
       <div class="field" style="margin-top: 12px;">
         <label>Тип досрочного погашения:</label>
-        <div class="radio-group strategy-group">
-          <label class="strategy-option is-active">
-            <input type="radio" name="strategy" value="term" checked />
-            <span>Уменьшение срока</span>
-          </label>
-          <label class="strategy-option">
-            <input type="radio" name="strategy" value="payment" />
-            <span>Уменьшение платежа</span>
-          </label>
-          <label class="strategy-option">
-            <input type="radio" name="strategy" value="combined" />
-            <span>Комбинированная стратегия</span>
-          </label>
+        <div class="radio-group">
+          <label class="strategy-option is-active"><input type="radio" name="strategy" value="term" checked /><span>Уменьшение срока</span></label>
+          <label class="strategy-option"><input type="radio" name="strategy" value="payment" /><span>Уменьшение платежа</span></label>
+          <label class="strategy-option"><input type="radio" name="strategy" value="combined" /><span>Комбинированная стратегия</span></label>
         </div>
       </div>
 
       <div class="actions">
-        <button class="calc" id="calculateBtn">Рассчитать</button>
-        <span class="hint">Все поля редактируемы; расчет автоматически обновляется при изменениях.</span>
+        <button class="primary" id="calculateBtn">Рассчитать</button>
+        <span class="hint">Изменения в форме пересчитывают результат автоматически. В карточках всегда показываются все 4 сценария.</span>
       </div>
       <div class="status" id="statusText"></div>
+    </section>
+
+    <section class="section">
+      <h2>Управление досрочными платежами</h2>
+      <div class="prepay-grid">
+        <div class="field">
+          <label for="prepayAmount">Сумма доп. платежа</label>
+          <input id="prepayAmount" type="text" inputmode="decimal" value="32 000" />
+        </div>
+        <div class="field">
+          <label for="prepayStartMonth">Месяц начала</label>
+          <input id="prepayStartMonth" type="number" min="1" step="1" value="2" />
+        </div>
+        <div class="field">
+          <label for="prepayType">Тип доп. платежа</label>
+          <select id="prepayType">
+            <option value="once">Разовый (в указанный месяц)</option>
+            <option value="monthlyFrom">Ежемесячно с указанного месяца</option>
+            <option value="monthlyAll">Ежемесячно весь срок</option>
+          </select>
+        </div>
+        <button class="primary" id="addPrepayBtn">Добавить платеж</button>
+        <button class="secondary" id="cancelEditBtn" style="display:none;">Отмена</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Тип</th>
+              <th>Сумма</th>
+              <th>Месяц начала</th>
+              <th>Действия</th>
+            </tr>
+          </thead>
+          <tbody id="prepayListBody"></tbody>
+        </table>
+      </div>
     </section>
 
     <section class="section">
@@ -321,14 +343,14 @@
   </div>
 
   <script>
+    const STORAGE_KEY = 'mortgage_calculator_state_v3';
+
     const els = {
       propertyCost: document.getElementById('propertyCost'),
       initialPayment: document.getElementById('initialPayment'),
       annualRate: document.getElementById('annualRate'),
       loanYears: document.getElementById('loanYears'),
       monthlyPayment: document.getElementById('monthlyPayment'),
-      extraPayment: document.getElementById('extraPayment'),
-      earlyMonth: document.getElementById('earlyMonth'),
       calculateBtn: document.getElementById('calculateBtn'),
       resultsCards: document.getElementById('resultsCards'),
       balanceChart: document.getElementById('balanceChart'),
@@ -336,17 +358,23 @@
       amortizationBody: document.getElementById('amortizationBody'),
       strategyRadios: document.querySelectorAll('input[name="strategy"]'),
       themeToggle: document.getElementById('themeToggle'),
-      statusText: document.getElementById('statusText')
+      statusText: document.getElementById('statusText'),
+      prepayAmount: document.getElementById('prepayAmount'),
+      prepayStartMonth: document.getElementById('prepayStartMonth'),
+      prepayType: document.getElementById('prepayType'),
+      addPrepayBtn: document.getElementById('addPrepayBtn'),
+      cancelEditBtn: document.getElementById('cancelEditBtn'),
+      prepayListBody: document.getElementById('prepayListBody')
     };
 
     let chart = null;
     let scenarios = {};
+    let earlyPayments = [];
+    let editPaymentId = null;
 
-    const moneyInputs = [els.propertyCost, els.initialPayment, els.extraPayment];
+    const moneyInputs = [els.propertyCost, els.initialPayment, els.prepayAmount];
 
-    function round2(v) {
-      return Math.round((v + Number.EPSILON) * 100) / 100;
-    }
+    function round2(v) { return Math.round((v + Number.EPSILON) * 100) / 100; }
 
     function parseRuNumber(value) {
       if (typeof value !== 'string') return Number(value) || 0;
@@ -371,86 +399,98 @@
       }).format(value);
     }
 
-    function formatTerm(totalMonths) {
-      return `${Math.floor(totalMonths / 12)} г. ${totalMonths % 12} мес.`;
+    function formatTerm(months) {
+      return `${Math.floor(months / 12)} г. ${months % 12} мес.`;
     }
 
-    function calculateMonthlyPayment(P, annualRate, n) {
+    function typeLabel(type) {
+      if (type === 'once') return 'Разовый';
+      if (type === 'monthlyFrom') return 'Ежемесячно с месяца';
+      return 'Ежемесячно весь срок';
+    }
+
+    function calculateMonthlyPayment(P, annualRate, nMonths) {
       const r = annualRate / 100 / 12;
-      if (P <= 0 || n <= 0) return 0;
-      if (r === 0) return P / n;
-      return P * r / (1 - Math.pow(1 + r, -n));
+      if (P <= 0 || nMonths <= 0) return 0;
+      if (r === 0) return P / nMonths;
+      return P * r / (1 - Math.pow(1 + r, -nMonths));
     }
 
-    function applyEarlyRepayment(balance, amount) {
-      return Math.max(0, balance - amount);
+    function getMonthlyUserExtra(month, payments) {
+      return payments.reduce((sum, p) => {
+        const amount = Math.max(0, Number(p.amount) || 0);
+        const start = Math.max(1, Number(p.startMonth) || 1);
+        if (amount <= 0) return sum;
+        if (p.type === 'once' && month === start) return sum + amount;
+        if (p.type === 'monthlyFrom' && month >= start) return sum + amount;
+        if (p.type === 'monthlyAll') return sum + amount;
+        return sum;
+      }, 0);
     }
 
-    function simulateLoan({ principal, annualRate, years, earlyMonth, extraPayment, strategy = 'baseline' }) {
-      const rateM = annualRate / 100 / 12;
+    function simulateLoan({ principal, annualRate, years, strategy, payments }) {
+      const monthlyRate = annualRate / 100 / 12;
       const totalMonths = years * 12;
       const originalPayment = calculateMonthlyPayment(principal, annualRate, totalMonths);
 
-      let balance = principal;
-      let currentPayment = originalPayment;
-      let records = [];
-      let totalInterest = 0;
       let month = 0;
-      let recurringCombinedExtra = 0;
-      let paymentRecalculated = false;
+      let balance = principal;
+      let totalInterest = 0;
+      let records = [];
+
+      let requiredPayment = originalPayment;
+      let combinedRequiredPayment = originalPayment;
+      let combinedActive = false;
 
       while (balance > 0.000001 && month < 1200) {
         month += 1;
 
-        const interest = balance * rateM;
-        let pay = currentPayment;
-        if (pay > balance + interest) pay = balance + interest;
+        const interest = balance * monthlyRate;
+        let monthlyPayment = strategy === 'combined' ? originalPayment : requiredPayment;
 
-        let principalPart = Math.max(0, pay - interest);
+        if (monthlyPayment > balance + interest) monthlyPayment = balance + interest;
+
+        let principalPart = Math.max(0, monthlyPayment - interest);
         balance = Math.max(0, balance - principalPart);
 
-        let extra = 0;
+        // Пользовательские досрочные платежи (могут быть множественными и регулярными)
+        let userExtra = 0;
+        if (balance > 0) {
+          userExtra = Math.min(getMonthlyUserExtra(month, payments), balance);
+          balance -= userExtra;
+        }
 
-        if (extraPayment > 0 && month === earlyMonth && balance > 0) {
-          const lump = Math.min(extraPayment, balance);
-          balance = applyEarlyRepayment(balance, lump);
-          extra += lump;
-
+        // Пересчет required-платежа для стратегий, когда был досрочный платеж
+        if (userExtra > 0) {
+          const monthsLeft = Math.max(1, totalMonths - month);
           if (strategy === 'payment') {
-            const monthsLeft = Math.max(1, totalMonths - month);
-            currentPayment = calculateMonthlyPayment(balance, annualRate, monthsLeft);
-            paymentRecalculated = true;
-          }
-
-          if (strategy === 'combined') {
-            const monthsLeft = Math.max(1, totalMonths - month);
-            const recalculated = calculateMonthlyPayment(balance, annualRate, monthsLeft);
-            recurringCombinedExtra = Math.max(0, originalPayment - recalculated);
-            currentPayment = originalPayment;
-            paymentRecalculated = true;
+            requiredPayment = calculateMonthlyPayment(balance, annualRate, monthsLeft);
+          } else if (strategy === 'combined') {
+            combinedRequiredPayment = calculateMonthlyPayment(balance, annualRate, monthsLeft);
+            combinedActive = true;
           }
         }
 
-        if (strategy === 'combined' && month > earlyMonth && recurringCombinedExtra > 0 && balance > 0) {
-          const extraRecurring = Math.min(recurringCombinedExtra, balance);
-          balance -= extraRecurring;
-          extra += extraRecurring;
+        // Комбинированная стратегия: после первого досрочного платежа разница идет в тело
+        let combinedExtra = 0;
+        if (strategy === 'combined' && combinedActive && balance > 0) {
+          combinedExtra = Math.max(0, originalPayment - combinedRequiredPayment);
+          combinedExtra = Math.min(combinedExtra, balance);
+          balance -= combinedExtra;
         }
+
+        const extra = userExtra + combinedExtra;
 
         totalInterest += interest;
 
         records.push({
           month,
-          payment: round2(pay),
+          payment: round2(monthlyPayment),
           interest: round2(interest),
           principal: round2(principalPart),
           extra: round2(extra),
           balance: round2(balance)
         });
-
-        if (strategy === 'payment' && !paymentRecalculated && month >= totalMonths) {
-          break;
-        }
       }
 
       return {
@@ -461,27 +501,19 @@
       };
     }
 
-    function simulateReduceTerm(args) {
-      return simulateLoan({ ...args, strategy: 'term' });
-    }
-
-    function simulateReducePayment(args) {
-      return simulateLoan({ ...args, strategy: 'payment' });
-    }
-
-    function simulateCombinedStrategy(args) {
-      return simulateLoan({ ...args, strategy: 'combined' });
-    }
+    function simulateReduceTerm(args) { return simulateLoan({ ...args, strategy: 'term' }); }
+    function simulateReducePayment(args) { return simulateLoan({ ...args, strategy: 'payment' }); }
+    function simulateCombinedStrategy(args) { return simulateLoan({ ...args, strategy: 'combined' }); }
 
     function renderResults(data) {
-      const baseInterest = data.baseline.totalInterest;
+      const baselineInterest = data.baseline.totalInterest;
       const cards = [
         ['Без досрочного погашения', data.baseline],
         ['Досрочное погашение (уменьшение срока)', data.term],
         ['Досрочное погашение (уменьшение платежа)', data.payment],
         ['Комбинированная стратегия', data.combined]
       ].map(([title, item]) => {
-        const saving = Math.max(0, baseInterest - item.totalInterest);
+        const saving = Math.max(0, baselineInterest - item.totalInterest);
         return `<article class="card">
           <h3>${title}</h3>
           <p class="metric">Общая переплата: <b>${formatMoney(item.totalInterest)}</b></p>
@@ -493,7 +525,8 @@
       els.resultsCards.innerHTML = cards;
     }
 
-    function buildSeries(records, maxLen) {
+    function buildBalanceSeries(records, maxLen) {
+      // График строится строго по массиву остатка долга по месяцам
       const values = records.map(r => r.balance);
       while (values.length < maxLen) values.push(null);
       return values;
@@ -509,11 +542,11 @@
       const labels = Array.from({ length: maxLen }, (_, i) => i + 1);
 
       const datasets = [
-        { label: 'Без досрочного', borderColor: '#64748b', data: buildSeries(data.baseline.records, maxLen) },
-        { label: 'Уменьшение срока', borderColor: '#2563eb', data: buildSeries(data.term.records, maxLen) },
-        { label: 'Уменьшение платежа', borderColor: '#f59e0b', data: buildSeries(data.payment.records, maxLen) },
-        { label: 'Комбинированная стратегия', borderColor: '#059669', data: buildSeries(data.combined.records, maxLen) }
-      ].map(d => ({ ...d, pointRadius: 0, tension: 0.18, borderWidth: 2 }));
+        { label: 'Без досрочного', borderColor: '#64748b', data: buildBalanceSeries(data.baseline.records, maxLen) },
+        { label: 'Уменьшение срока', borderColor: '#2563eb', data: buildBalanceSeries(data.term.records, maxLen) },
+        { label: 'Уменьшение платежа', borderColor: '#f59e0b', data: buildBalanceSeries(data.payment.records, maxLen) },
+        { label: 'Комбинированная стратегия', borderColor: '#059669', data: buildBalanceSeries(data.combined.records, maxLen) }
+      ].map(d => ({ ...d, pointRadius: 0, tension: 0.2, borderWidth: 2, spanGaps: false }));
 
       if (chart) chart.destroy();
       chart = new Chart(els.balanceChart, {
@@ -525,25 +558,26 @@
             x: { title: { display: true, text: 'Месяц' } },
             y: {
               title: { display: true, text: 'Остаток долга, ₽' },
-              ticks: { callback: v => formatRuNumber(v, 0) }
+              ticks: { callback: (v) => formatRuNumber(v, 0) }
             }
           },
           plugins: {
             tooltip: {
-              callbacks: {
-                label: (ctx) => `${ctx.dataset.label}: ${formatMoney(ctx.raw)}`
-              }
+              callbacks: { label: (ctx) => `${ctx.dataset.label}: ${formatMoney(ctx.raw ?? 0)}` }
             }
           }
         }
       });
+
+      // Для проверок в консоли/автотесте
+      window.chart = chart;
     }
 
-    function renderTable(records, title) {
+    function renderTable(records, scenarioName) {
       els.amortizationBody.innerHTML = records.map(r => `
         <tr>
           <td>${r.month}</td>
-          <td>${title}</td>
+          <td>${scenarioName}</td>
           <td>${formatMoney(r.payment)}</td>
           <td>${formatMoney(r.interest)}</td>
           <td>${formatMoney(r.principal)}</td>
@@ -553,15 +587,24 @@
       `).join('');
     }
 
-    function getInputData() {
-      const propertyCost = parseRuNumber(els.propertyCost.value);
-      const initialPayment = parseRuNumber(els.initialPayment.value);
-      const annualRate = Math.max(0, Number(els.annualRate.value));
-      const loanYears = Math.max(1, Number(els.loanYears.value));
-      const extraPayment = Math.max(0, parseRuNumber(els.extraPayment.value));
-      const earlyMonth = Math.max(1, Number(els.earlyMonth.value));
+    function renderEarlyPaymentsList() {
+      if (!earlyPayments.length) {
+        els.prepayListBody.innerHTML = '<tr><td colspan="5">Нет добавленных досрочных платежей</td></tr>';
+        return;
+      }
 
-      return { propertyCost, initialPayment, annualRate, loanYears, extraPayment, earlyMonth };
+      els.prepayListBody.innerHTML = earlyPayments.map((p, idx) => `
+        <tr>
+          <td>${idx + 1}</td>
+          <td>${typeLabel(p.type)}</td>
+          <td>${formatMoney(p.amount)}</td>
+          <td>${p.type === 'monthlyAll' ? '1' : p.startMonth}</td>
+          <td>
+            <button class="secondary" data-action="edit" data-id="${p.id}">Редактировать</button>
+            <button class="secondary" data-action="delete" data-id="${p.id}">Удалить</button>
+          </td>
+        </tr>
+      `).join('');
     }
 
     function updateStrategySelection() {
@@ -569,6 +612,15 @@
         const input = option.querySelector('input[type="radio"]');
         option.classList.toggle('is-active', Boolean(input && input.checked));
       });
+    }
+
+    function getInputData() {
+      return {
+        propertyCost: parseRuNumber(els.propertyCost.value),
+        initialPayment: parseRuNumber(els.initialPayment.value),
+        annualRate: Math.max(0, Number(els.annualRate.value)),
+        loanYears: Math.max(1, Number(els.loanYears.value))
+      };
     }
 
     function updateTableBySelection() {
@@ -583,67 +635,188 @@
       if (scenario) renderTable(scenario.records, names[key]);
     }
 
+    function saveState() {
+      const selectedStrategy = [...els.strategyRadios].find(r => r.checked)?.value || 'term';
+      const state = {
+        inputs: {
+          propertyCost: parseRuNumber(els.propertyCost.value),
+          initialPayment: parseRuNumber(els.initialPayment.value),
+          annualRate: Number(els.annualRate.value),
+          loanYears: Number(els.loanYears.value)
+        },
+        earlyPayments,
+        selectedStrategy,
+        selectedTableScenario: els.tableScenario.value,
+        darkTheme: document.body.classList.contains('theme-dark')
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function loadState() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      try {
+        const state = JSON.parse(raw);
+        if (state.inputs) {
+          els.propertyCost.value = formatRuNumber(state.inputs.propertyCost ?? parseRuNumber(els.propertyCost.value));
+          els.initialPayment.value = formatRuNumber(state.inputs.initialPayment ?? parseRuNumber(els.initialPayment.value));
+          els.annualRate.value = state.inputs.annualRate ?? els.annualRate.value;
+          els.loanYears.value = state.inputs.loanYears ?? els.loanYears.value;
+        }
+        if (Array.isArray(state.earlyPayments)) {
+          earlyPayments = state.earlyPayments
+            .map(p => ({
+              id: String(p.id ?? crypto.randomUUID()),
+              amount: Math.max(0, Number(p.amount) || 0),
+              startMonth: Math.max(1, Number(p.startMonth) || 1),
+              type: ['once', 'monthlyFrom', 'monthlyAll'].includes(p.type) ? p.type : 'once'
+            }));
+        }
+        if (state.selectedStrategy) {
+          const radio = [...els.strategyRadios].find(r => r.value === state.selectedStrategy);
+          if (radio) radio.checked = true;
+        }
+        if (state.selectedTableScenario) {
+          els.tableScenario.value = state.selectedTableScenario;
+        }
+        if (state.darkTheme) {
+          document.body.classList.add('theme-dark');
+          els.themeToggle.textContent = 'Светлый режим';
+        }
+      } catch (e) {
+        console.warn('Не удалось загрузить сохраненные данные:', e);
+      }
+    }
+
     function calculateAll() {
       const data = getInputData();
       const principal = Math.max(0, data.propertyCost - data.initialPayment);
-      const months = data.loanYears * 12;
-      const monthly = calculateMonthlyPayment(principal, data.annualRate, months);
+      const totalMonths = data.loanYears * 12;
+      const monthly = calculateMonthlyPayment(principal, data.annualRate, totalMonths);
+      els.monthlyPayment.value = formatMoney(monthly);
 
-      els.monthlyPayment.value = formatMoney(round2(monthly));
-
-      const baseArgs = {
+      const args = {
         principal,
         annualRate: data.annualRate,
         years: data.loanYears,
-        earlyMonth: data.earlyMonth,
-        extraPayment: data.extraPayment
+        payments: earlyPayments
       };
 
       scenarios = {
-        baseline: simulateLoan({ ...baseArgs, strategy: 'baseline', extraPayment: 0 }),
-        term: simulateReduceTerm(baseArgs),
-        payment: simulateReducePayment(baseArgs),
-        combined: simulateCombinedStrategy(baseArgs)
+        baseline: simulateLoan({ ...args, strategy: 'baseline', payments: [] }),
+        term: simulateReduceTerm(args),
+        payment: simulateReducePayment(args),
+        combined: simulateCombinedStrategy(args)
       };
 
       renderResults(scenarios);
       renderChart(scenarios);
 
-      const selected = [...els.strategyRadios].find(r => r.checked)?.value || 'term';
-      els.tableScenario.value = selected;
+      const selectedStrategy = [...els.strategyRadios].find(r => r.checked)?.value || 'term';
+      if (!els.tableScenario.value || !['baseline', 'term', 'payment', 'combined'].includes(els.tableScenario.value)) {
+        els.tableScenario.value = selectedStrategy;
+      }
       updateStrategySelection();
       updateTableBySelection();
 
-      els.statusText.textContent = `Проверка: расчет выполнен. Сумма кредита ${formatMoney(principal)}, базовый платеж ${formatMoney(monthly)}.`;
+      els.statusText.textContent = `Расчет выполнен. Сумма кредита: ${formatMoney(principal)}. Базовый платеж: ${formatMoney(monthly)}. Досрочных платежей: ${earlyPayments.length}.`;
+
+      saveState();
+    }
+
+    function resetPrepayEditor() {
+      editPaymentId = null;
+      els.prepayAmount.value = formatRuNumber(32000);
+      els.prepayStartMonth.value = '2';
+      els.prepayType.value = 'once';
+      els.addPrepayBtn.textContent = 'Добавить платеж';
+      els.cancelEditBtn.style.display = 'none';
+    }
+
+    function fillPrepayEditor(payment) {
+      editPaymentId = payment.id;
+      els.prepayAmount.value = formatRuNumber(payment.amount);
+      els.prepayStartMonth.value = String(payment.startMonth);
+      els.prepayType.value = payment.type;
+      els.addPrepayBtn.textContent = 'Сохранить изменения';
+      els.cancelEditBtn.style.display = 'inline-block';
+    }
+
+    function handleAddOrUpdatePrepay() {
+      const amount = Math.max(0, parseRuNumber(els.prepayAmount.value));
+      const startMonth = Math.max(1, Number(els.prepayStartMonth.value));
+      const type = els.prepayType.value;
+
+      if (amount <= 0) {
+        els.statusText.textContent = 'Ошибка: сумма досрочного платежа должна быть больше 0.';
+        return;
+      }
+
+      const payload = {
+        amount,
+        startMonth: type === 'monthlyAll' ? 1 : startMonth,
+        type: ['once', 'monthlyFrom', 'monthlyAll'].includes(type) ? type : 'once'
+      };
+
+      if (editPaymentId) {
+        earlyPayments = earlyPayments.map(p => p.id === editPaymentId ? { ...p, ...payload } : p);
+      } else {
+        earlyPayments.push({ id: crypto.randomUUID(), ...payload });
+      }
+
+      renderEarlyPaymentsList();
+      resetPrepayEditor();
+      calculateAll();
+    }
+
+    function handlePrepayTableClick(event) {
+      const btn = event.target.closest('button[data-action]');
+      if (!btn) return;
+
+      const id = btn.getAttribute('data-id');
+      const action = btn.getAttribute('data-action');
+      const payment = earlyPayments.find(p => p.id === id);
+      if (!payment) return;
+
+      if (action === 'edit') {
+        fillPrepayEditor(payment);
+      }
+
+      if (action === 'delete') {
+        earlyPayments = earlyPayments.filter(p => p.id !== id);
+        renderEarlyPaymentsList();
+        if (editPaymentId === id) resetPrepayEditor();
+        calculateAll();
+      }
     }
 
     function wireMoneyInput(input) {
       input.addEventListener('focus', () => {
         input.value = String(parseRuNumber(input.value)).replace('.', ',');
       });
-
       input.addEventListener('blur', () => {
         input.value = formatRuNumber(parseRuNumber(input.value));
       });
-
       input.addEventListener('input', calculateAll);
     }
 
     moneyInputs.forEach(wireMoneyInput);
 
-    [els.annualRate, els.loanYears, els.earlyMonth].forEach(el => {
+    [els.annualRate, els.loanYears].forEach(el => {
       el.addEventListener('input', calculateAll);
       el.addEventListener('change', calculateAll);
     });
 
-    els.tableScenario.addEventListener('change', updateTableBySelection);
-
-    els.strategyRadios.forEach(r => r.addEventListener('change', () => {
-      els.tableScenario.value = r.value;
-      updateStrategySelection();
+    els.tableScenario.addEventListener('change', () => {
       updateTableBySelection();
+      saveState();
+    });
+
+    els.strategyRadios.forEach(radio => radio.addEventListener('change', () => {
       updateStrategySelection();
-    calculateAll();
+      const selected = [...els.strategyRadios].find(r => r.checked)?.value || 'term';
+      els.tableScenario.value = selected;
+      calculateAll();
     }));
 
     els.calculateBtn.addEventListener('click', calculateAll);
@@ -652,20 +825,21 @@
       document.body.classList.toggle('theme-dark');
       const dark = document.body.classList.contains('theme-dark');
       els.themeToggle.textContent = dark ? 'Светлый режим' : 'Черный режим';
-      localStorage.setItem('mortgage_theme_dark', dark ? '1' : '0');
+      saveState();
       if (Object.keys(scenarios).length) renderChart(scenarios);
     });
 
-    if (localStorage.getItem('mortgage_theme_dark') === '1') {
-      document.body.classList.add('theme-dark');
-      els.themeToggle.textContent = 'Светлый режим';
-    }
+    els.addPrepayBtn.addEventListener('click', handleAddOrUpdatePrepay);
+    els.cancelEditBtn.addEventListener('click', resetPrepayEditor);
+    els.prepayListBody.addEventListener('click', handlePrepayTableClick);
 
+    // Инициализация
+    loadState();
     moneyInputs.forEach(input => {
       input.value = formatRuNumber(parseRuNumber(input.value));
     });
-
     updateStrategySelection();
+    renderEarlyPaymentsList();
     calculateAll();
   </script>
 </body>
