@@ -1,0 +1,1045 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ипотечный калькулятор</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+  <style>
+    :root {
+      --bg: #f3f6fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --primary: #2563eb;
+      --success: #059669;
+      --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    }
+
+    body.theme-dark {
+      --bg: #0b1220;
+      --card: #111827;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --border: #374151;
+      --primary: #60a5fa;
+      --success: #34d399;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .theme-toggle {
+      position: fixed;
+      top: 14px;
+      left: 14px;
+      z-index: 10;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: 600;
+      min-height: 40px;
+      display: inline-flex;
+      align-items: center;
+      line-height: 1;
+    }
+
+    .save-toggle {
+      position: fixed;
+      top: 14px;
+      right: 14px;
+      z-index: 10;
+      border: 1px solid var(--border);
+      background: var(--primary);
+      color: #fff;
+      border-radius: 10px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: 700;
+      min-height: 40px;
+      display: inline-flex;
+      align-items: center;
+      line-height: 1;
+    }
+
+    .scroll-toggle {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 10;
+      border: 1px solid var(--border);
+      background: var(--primary);
+      color: #fff;
+      border-radius: 999px;
+      padding: 10px 12px;
+      cursor: pointer;
+      font-weight: 700;
+      min-width: 44px;
+      min-height: 44px;
+    }
+
+    .container {
+      max-width: 1220px;
+      margin: 56px auto 30px;
+      padding: 0 14px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+
+    h1, h2, h3 { margin: 0 0 12px; }
+    h1 { font-size: 28px; }
+    .subtitle { color: var(--muted); margin-bottom: 12px; }
+
+    .input-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 12px;
+    }
+
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    label { font-size: 14px; font-weight: 600; }
+
+    input, select, button {
+      font-family: inherit;
+      font-size: 15px;
+    }
+
+    input, select {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--card);
+      color: var(--text);
+      padding: 10px 12px;
+      width: 100%;
+    }
+
+    input[type="date"] {
+      font-family: inherit;
+      letter-spacing: 0;
+      line-height: 1.2;
+    }
+
+    input[readonly] { opacity: .9; font-weight: 700; }
+
+    .radio-group {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
+    .strategy-option {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      min-width: 220px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      cursor: pointer;
+      user-select: none;
+      transition: all .15s ease;
+    }
+
+    .strategy-option input { display: none; }
+
+    .strategy-option span {
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1.25;
+    }
+
+    .strategy-option.is-active {
+      border: 2px solid #ffffff;
+      font-weight: 800;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.45);
+    }
+
+    body:not(.theme-dark) .strategy-option.is-active {
+      border-color: #111827;
+      box-shadow: inset 0 0 0 1px rgba(17,24,39,.2);
+    }
+
+    .actions { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+    button.primary {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 16px;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      background: var(--card);
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .hint { font-size: 13px; color: var(--muted); }
+    .status { margin-top: 8px; font-size: 13px; color: var(--muted); }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 12px;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      background: var(--card);
+      position: relative;
+    }
+
+    .help-dot {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      cursor: help;
+      background: var(--card);
+      color: var(--text);
+    }
+
+    .help-tooltip {
+      position: absolute;
+      right: 10px;
+      top: 36px;
+      width: min(420px, 92vw);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      box-shadow: var(--shadow);
+      font-size: 12px;
+      color: var(--text);
+      display: none;
+      z-index: 3;
+    }
+
+    .help-dot:hover + .help-tooltip,
+    .help-tooltip:hover {
+      display: block;
+    }
+
+    .metric { margin: 6px 0; }
+    .metric b { margin-left: 6px; }
+    .saving { color: var(--success); }
+
+    .prepay-grid {
+      display: grid;
+      grid-template-columns: 1.3fr .9fr 1fr auto auto;
+      gap: 10px;
+      align-items: end;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-top: 10px;
+    }
+
+    table {
+      width: 100%;
+      min-width: 860px;
+      border-collapse: collapse;
+      background: var(--card);
+    }
+
+    th, td {
+      padding: 9px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    th { background: color-mix(in srgb, var(--card) 82%, var(--text) 18%); position: sticky; top: 0; }
+    th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+
+    @media (max-width: 980px) {
+      .prepay-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 700px) {
+      h1 { font-size: 24px; }
+      .container { margin-top: 72px; }
+      .theme-toggle, .save-toggle { top: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <button class="theme-toggle" id="themeToggle">Черный режим</button>
+  <button class="save-toggle" id="saveBtn">Сохранить</button>
+  <button class="scroll-toggle" id="scrollToggle" title="Вниз">↓</button>
+
+  <div class="container">
+    <section class="section">
+      <h1>Ипотечный калькулятор</h1>
+      <p class="subtitle">Помесячный расчет ипотеки и сравнение стратегий досрочного погашения.</p>
+
+      <div class="input-grid">
+        <div class="field">
+          <label for="propertyCost">Стоимость недвижимости</label>
+          <input id="propertyCost" type="text" inputmode="decimal" value="16 254 280,60" />
+        </div>
+        <div class="field">
+          <label for="initialPayment">Первоначальный взнос</label>
+          <input id="initialPayment" type="text" inputmode="decimal" value="5 000 280,60" />
+        </div>
+        <div class="field">
+          <label for="annualRate">Ставка (% годовых)</label>
+          <input id="annualRate" type="number" min="0" step="0.01" value="5" />
+        </div>
+        <div class="field">
+          <label for="loanYears">Срок кредита (лет)</label>
+          <input id="loanYears" type="number" min="1" step="1" value="30" />
+        </div>
+        <div class="field">
+          <label for="mortgageStartDate">Дата взятия ипотеки</label>
+          <input id="mortgageStartDate" type="date" value="2024-01-01" />
+        </div>
+        <div class="field">
+          <label for="monthlyPayment">Ежемесячный платеж (авторасчет)</label>
+          <input id="monthlyPayment" type="text" readonly />
+        </div>
+      </div>
+
+      <div class="field" style="margin-top: 12px;">
+        <label>Тип досрочного погашения:</label>
+        <div class="radio-group">
+          <label class="strategy-option is-active"><input type="radio" name="strategy" value="term" checked /><span>Уменьшение срока</span></label>
+          <label class="strategy-option"><input type="radio" name="strategy" value="payment" /><span>Уменьшение платежа</span></label>
+          <label class="strategy-option"><input type="radio" name="strategy" value="combined" /><span>Комбинированная стратегия</span></label>
+        </div>
+      </div>
+
+      <div class="actions">
+        <span class="hint">Изменения в форме пересчитывают результат автоматически. В карточках всегда показываются все 4 сценария.</span>
+      </div>
+      <div class="status" id="statusText"></div>
+      <div class="hint">Изменения сохраняются автоматически в вашем браузере (localStorage).</div>
+    </section>
+
+    <section class="section">
+      <h2>Управление досрочными платежами</h2>
+      <div class="prepay-grid">
+        <div class="field">
+          <label for="prepayAmount">Сумма доп. платежа</label>
+          <input id="prepayAmount" type="text" inputmode="decimal" value="32 000" />
+        </div>
+        <div class="field">
+          <label for="prepayStartMonth">Месяц начала</label>
+          <input id="prepayStartMonth" type="number" min="1" step="1" value="2" />
+        </div>
+        <div class="field">
+          <label for="prepayType">Тип доп. платежа</label>
+          <select id="prepayType">
+            <option value="once">Разовый (в указанный месяц)</option>
+            <option value="monthlyFrom">Ежемесячно с указанного месяца</option>
+            <option value="monthlyAll">Ежемесячно весь срок</option>
+          </select>
+        </div>
+        <button class="primary" id="addPrepayBtn">Добавить платеж</button>
+        <button class="secondary" id="cancelEditBtn" style="display:none;">Отмена</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Тип</th>
+              <th>Сумма</th>
+              <th>Месяц начала</th>
+              <th>Действия</th>
+            </tr>
+          </thead>
+          <tbody id="prepayListBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Результаты сравнения</h2>
+      <div class="cards" id="resultsCards"></div>
+    </section>
+
+    <section class="section" style="height: 360px;">
+      <h2>График остатка долга</h2>
+      <canvas id="balanceChart"></canvas>
+    </section>
+
+    <section class="section">
+      <h2>Амортизационная таблица</h2>
+      <div style="margin-bottom: 10px; max-width: 400px;">
+        <label for="tableScenario">Сценарий для таблицы</label>
+        <select id="tableScenario">
+          <option value="baseline">Без досрочного погашения</option>
+          <option value="term">Досрочное погашение (уменьшение срока)</option>
+          <option value="payment">Досрочное погашение (уменьшение платежа)</option>
+          <option value="combined">Комбинированная стратегия</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Дата</th>
+              <th>Месяц</th>
+              <th>Платеж</th>
+              <th>Проценты</th>
+              <th>Тело кредита</th>
+              <th>Доп. погашение</th>
+              <th>Остаток долга</th>
+            </tr>
+          </thead>
+          <tbody id="amortizationBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'mortgage_calculator_state_v3';
+
+    const els = {
+      propertyCost: document.getElementById('propertyCost'),
+      initialPayment: document.getElementById('initialPayment'),
+      annualRate: document.getElementById('annualRate'),
+      loanYears: document.getElementById('loanYears'),
+      monthlyPayment: document.getElementById('monthlyPayment'),
+      mortgageStartDate: document.getElementById('mortgageStartDate'),
+      resultsCards: document.getElementById('resultsCards'),
+      balanceChart: document.getElementById('balanceChart'),
+      tableScenario: document.getElementById('tableScenario'),
+      amortizationBody: document.getElementById('amortizationBody'),
+      strategyRadios: document.querySelectorAll('input[name="strategy"]'),
+      themeToggle: document.getElementById('themeToggle'),
+      saveBtn: document.getElementById('saveBtn'),
+      scrollToggle: document.getElementById('scrollToggle'),
+      statusText: document.getElementById('statusText'),
+      prepayAmount: document.getElementById('prepayAmount'),
+      prepayStartMonth: document.getElementById('prepayStartMonth'),
+      prepayType: document.getElementById('prepayType'),
+      addPrepayBtn: document.getElementById('addPrepayBtn'),
+      cancelEditBtn: document.getElementById('cancelEditBtn'),
+      prepayListBody: document.getElementById('prepayListBody')
+    };
+
+    let chart = null;
+    let scenarios = {};
+    let earlyPayments = [];
+    let editPaymentId = null;
+
+    const moneyInputs = [els.propertyCost, els.initialPayment, els.prepayAmount];
+
+    function round2(v) { return Math.round((v + Number.EPSILON) * 100) / 100; }
+
+    function parseRuNumber(value) {
+      if (typeof value !== 'string') return Number(value) || 0;
+      const normalized = value.replace(/\s/g, '').replace(',', '.').replace(/[^0-9.-]/g, '');
+      const n = Number(normalized);
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function formatRuNumber(value, digits = 2) {
+      return new Intl.NumberFormat('ru-RU', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: digits
+      }).format(value);
+    }
+
+    function formatMoney(value) {
+      return new Intl.NumberFormat('ru-RU', {
+        style: 'currency',
+        currency: 'RUB',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(value);
+    }
+
+    function formatTerm(months) {
+      return `${Math.floor(months / 12)} г. ${months % 12} мес.`;
+    }
+
+    function typeLabel(type) {
+      if (type === 'once') return 'Разовый';
+      if (type === 'monthlyFrom') return 'Ежемесячно с месяца';
+      return 'Ежемесячно весь срок';
+    }
+
+    function calculateMonthlyPayment(P, annualRate, nMonths) {
+      const r = annualRate / 100 / 12;
+      if (P <= 0 || nMonths <= 0) return 0;
+      if (r === 0) return P / nMonths;
+      return P * (r * Math.pow(1 + r, nMonths)) / (Math.pow(1 + r, nMonths) - 1);
+    }
+
+    function getMonthlyUserExtra(month, payments) {
+      return payments.reduce((sum, p) => {
+        const amount = Math.max(0, Number(p.amount) || 0);
+        const start = Math.max(1, Number(p.startMonth) || 1);
+        if (amount <= 0) return sum;
+        if (p.type === 'once' && month === start) return sum + amount;
+        if (p.type === 'monthlyFrom' && month >= start) return sum + amount;
+        if (p.type === 'monthlyAll') return sum + amount;
+        return sum;
+      }, 0);
+    }
+
+    function remainingBalanceByFormula(P, A, r, k) {
+      if (P <= 0) return 0;
+      if (k <= 0) return P;
+      if (r === 0) return Math.max(0, P - A * k);
+      return P * Math.pow(1 + r, k) - A * ((Math.pow(1 + r, k) - 1) / r);
+    }
+
+    function remainingMonthsForFixedPayment(balance, payment, r) {
+      if (balance <= 0) return 0;
+      if (payment <= 0) return Infinity;
+      if (r === 0) return balance / payment;
+      const denom = payment - r * balance;
+      if (denom <= 0) return Infinity;
+      return Math.log(payment / denom) / Math.log(1 + r);
+    }
+
+    function simulateLoan({ principal, annualRate, years, strategy, payments }) {
+      const r = annualRate / 100 / 12;
+      const totalMonths = years * 12;
+      const originalPayment = calculateMonthlyPayment(principal, annualRate, totalMonths);
+
+      let month = 0;
+      let balance = principal;
+      let totalInterest = 0;
+      let records = [];
+
+      let currentRequiredPayment = originalPayment;
+      let combinedActive = false;
+      let termAfterPrepayMonths = totalMonths;
+
+      while (balance > 0.000001 && month < 1200) {
+        month += 1;
+
+        const monthsRemainPlanned = Math.max(1, totalMonths - month + 1);
+        const balanceBeforePayment = balance;
+        const interest = balanceBeforePayment * r;
+
+        // В комбинированной стратегии клиент платит исходный платеж A
+        let paymentForThisMonth = strategy === 'combined' ? originalPayment : currentRequiredPayment;
+        paymentForThisMonth = Math.min(paymentForThisMonth, balanceBeforePayment + interest);
+
+        // Строгое обновление остатка по формуле B_k (k = 1)
+        let balanceAfterRegular = remainingBalanceByFormula(balanceBeforePayment, paymentForThisMonth, r, 1);
+        balanceAfterRegular = Math.max(0, balanceAfterRegular);
+        let principalPart = Math.max(0, balanceBeforePayment - balanceAfterRegular);
+
+        // Пользовательские досрочные платежи (разовые и регулярные)
+        let userExtra = 0;
+        if (balanceAfterRegular > 0) {
+          userExtra = Math.min(getMonthlyUserExtra(month, payments), balanceAfterRegular);
+          balanceAfterRegular -= userExtra;
+        }
+
+        // Перерасчет стратегии после досрочного платежа
+        if (userExtra > 0) {
+          const Bnew = Math.max(0, balanceAfterRegular);
+          const nRemain = Math.max(1, totalMonths - month);
+
+          if (strategy === 'term') {
+            // A фиксирован, ищем новый срок n_new
+            termAfterPrepayMonths = remainingMonthsForFixedPayment(Bnew, originalPayment, r);
+          } else if (strategy === 'payment') {
+            // Срок фиксирован, пересчитываем платеж
+            currentRequiredPayment = calculateMonthlyPayment(Bnew, annualRate, nRemain);
+          } else if (strategy === 'combined') {
+            // Банк пересчитывает обязательный платеж, клиент продолжает платить A
+            currentRequiredPayment = calculateMonthlyPayment(Bnew, annualRate, nRemain);
+            combinedActive = true;
+          }
+        }
+
+        // Комбинированная стратегия: extra = A - A_new каждый месяц после активации
+        let combinedExtra = 0;
+        if (strategy === 'combined' && combinedActive && balanceAfterRegular > 0) {
+          combinedExtra = Math.max(0, originalPayment - currentRequiredPayment);
+          combinedExtra = Math.min(combinedExtra, balanceAfterRegular);
+          balanceAfterRegular -= combinedExtra;
+        }
+
+        balance = Math.max(0, balanceAfterRegular);
+        totalInterest += interest;
+
+        records.push({
+          month,
+          payment: round2(paymentForThisMonth),
+          interest: round2(interest),
+          principal: round2(principalPart),
+          extra: round2(userExtra + combinedExtra),
+          balance: round2(balance)
+        });
+      }
+
+      const effectiveMonths = strategy === 'term'
+        ? Math.min(records.length, Math.ceil(termAfterPrepayMonths || records.length))
+        : records.length;
+
+      return {
+        records,
+        totalMonths: effectiveMonths,
+        totalInterest: round2(totalInterest),
+        monthlyPayment: round2(originalPayment)
+      };
+    }
+
+    function simulateReduceTerm(args) { return simulateLoan({ ...args, strategy: 'term' }); }
+    function simulateReducePayment(args) { return simulateLoan({ ...args, strategy: 'payment' }); }
+    function simulateCombinedStrategy(args) { return simulateLoan({ ...args, strategy: 'combined' }); }
+
+    function scenarioHelpHtml(key) {
+      const common = String.raw`Аннуитет: \(A = P \cdot \frac{r}{1-(1+r)^{-n}}\)<br>Где: \(P\) — сумма долга, \(r\) — месячная ставка, \(n\) — число месяцев, \(A\) — платеж.`;
+      if (key === 'baseline') return `${common}<br><br>${String.raw`Без досрочного: \(Extra_m = 0\), остаток на шаге \(m\): \(B_m = B_{m-1} - (A - I_m)\), \(I_m = B_{m-1} \cdot r\).`}`;
+      if (key === 'term') return `${common}<br><br>${String.raw`Уменьшение срока: при досрочном \(Extra_m > 0\) сохраняем \(A=const\), срок уменьшается за счет более быстрого снижения \(B_m\).`}`;
+      if (key === 'payment') return `${common}<br><br>${String.raw`Уменьшение платежа: после досрочного пересчет \(A_{new} = B_m \cdot \frac{r}{1-(1+r)^{-n_{left}}}\), срок \(n_{left}\) сохраняется.`}`;
+      return `${common}<br><br>${String.raw`Комбинированная: после досрочного считаем \(A_{req}\), но платим \(A_{orig}\). Доп. в тело каждый месяц: \(Extra_m = A_{orig} - A_{req}\), если \(Extra_m > 0\).`}`;
+    }
+
+    function renderResults(data) {
+      const baselineInterest = data.baseline.totalInterest;
+      const cards = [
+        ['baseline', 'Без досрочного погашения', data.baseline],
+        ['term', 'Досрочное погашение (уменьшение срока)', data.term],
+        ['payment', 'Досрочное погашение (уменьшение платежа)', data.payment],
+        ['combined', 'Комбинированная стратегия', data.combined]
+      ].map(([key, title, item]) => {
+        const saving = Math.max(0, baselineInterest - item.totalInterest);
+        return `<article class="card">
+          <span class="help-dot" aria-label="Подсказка">?</span>
+          <div class="help-tooltip">${scenarioHelpHtml(key)}</div>
+          <h3>${title}</h3>
+          <p class="metric">Общая переплата: <b>${formatMoney(item.totalInterest)}</b></p>
+          <p class="metric">Срок кредита: <b>${formatTerm(item.totalMonths)}</b></p>
+          <p class="metric">Экономия процентов: <b class="saving">${formatMoney(saving)}</b></p>
+        </article>`;
+      }).join('');
+
+      els.resultsCards.innerHTML = cards;
+      if (window.MathJax && window.MathJax.typesetPromise) {
+        window.MathJax.typesetPromise([els.resultsCards]).catch(() => {});
+      }
+    }
+
+    function buildBalanceSeries(records, maxLen) {
+      // График строится строго по массиву остатка долга по месяцам
+      const values = records.map(r => r.balance);
+      while (values.length < maxLen) values.push(null);
+      return values;
+    }
+
+    function renderChart(data) {
+      const maxLen = Math.max(
+        data.baseline.records.length,
+        data.term.records.length,
+        data.payment.records.length,
+        data.combined.records.length
+      );
+      const baseDate = els.mortgageStartDate.value ? new Date(`${els.mortgageStartDate.value}T00:00:00`) : new Date();
+      const labels = Array.from({ length: maxLen }, (_, i) => {
+        const d = addMonths(baseDate, i);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        return `${y}-${m}`;
+      });
+
+      const datasets = [
+        { label: 'Без досрочного', borderColor: '#64748b', data: buildBalanceSeries(data.baseline.records, maxLen) },
+        { label: 'Уменьшение срока', borderColor: '#2563eb', data: buildBalanceSeries(data.term.records, maxLen) },
+        { label: 'Уменьшение платежа', borderColor: '#f59e0b', data: buildBalanceSeries(data.payment.records, maxLen) },
+        { label: 'Комбинированная стратегия', borderColor: '#059669', data: buildBalanceSeries(data.combined.records, maxLen) }
+      ].map(d => ({ ...d, pointRadius: 0, tension: 0.2, borderWidth: 2, spanGaps: false }));
+
+      if (chart) chart.destroy();
+      chart = new Chart(els.balanceChart, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+          maintainAspectRatio: false,
+          scales: {
+            x: {
+              title: { display: true, text: 'Год' },
+              ticks: {
+                callback: (value, index) => {
+                  const label = labels[index] || '';
+                  const [year, month] = label.split('-');
+                  return (index === 0 || month === '01') ? year : '';
+                }
+              }
+            },
+            y: {
+              title: { display: true, text: 'Остаток долга, ₽' },
+              ticks: { callback: (v) => formatRuNumber(v, 0) }
+            }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                title: (items) => {
+                  const lbl = items?.[0]?.label || '';
+                  if (!lbl) return '';
+                  const [y, m] = lbl.split('-');
+                  const dt = new Date(Number(y), Number(m) - 1, 1);
+                  return formatMonthDate(dt);
+                },
+                label: (ctx) => `${ctx.dataset.label}: ${formatMoney(ctx.raw ?? 0)}`
+              }
+            }
+          }
+        }
+      });
+
+      // Для проверок в консоли/автотесте
+      window.chart = chart;
+    }
+
+    function addMonths(date, monthsToAdd) {
+      const d = new Date(date.getTime());
+      d.setMonth(d.getMonth() + monthsToAdd);
+      return d;
+    }
+
+    function formatMonthDate(dateObj) {
+      return new Intl.DateTimeFormat('ru-RU', { year: 'numeric', month: 'long' }).format(dateObj);
+    }
+
+    function renderTable(records) {
+      const baseDate = els.mortgageStartDate.value ? new Date(`${els.mortgageStartDate.value}T00:00:00`) : new Date();
+      els.amortizationBody.innerHTML = records.map(r => {
+        const rowDate = addMonths(baseDate, r.month - 1);
+        return `
+        <tr>
+          <td>${formatMonthDate(rowDate)}</td>
+          <td>${r.month}</td>
+          <td>${formatMoney(r.payment)}</td>
+          <td>${formatMoney(r.interest)}</td>
+          <td>${formatMoney(r.principal)}</td>
+          <td>${formatMoney(r.extra)}</td>
+          <td>${formatMoney(r.balance)}</td>
+        </tr>
+      `;
+      }).join('');
+    }
+
+    function renderEarlyPaymentsList() {
+      if (!earlyPayments.length) {
+        els.prepayListBody.innerHTML = '<tr><td colspan="5">Нет добавленных досрочных платежей</td></tr>';
+        return;
+      }
+
+      els.prepayListBody.innerHTML = earlyPayments.map((p, idx) => `
+        <tr>
+          <td>${idx + 1}</td>
+          <td>${typeLabel(p.type)}</td>
+          <td>${formatMoney(p.amount)}</td>
+          <td>${p.type === 'monthlyAll' ? '1' : p.startMonth}</td>
+          <td>
+            <button class="secondary" data-action="edit" data-id="${p.id}">Редактировать</button>
+            <button class="secondary" data-action="delete" data-id="${p.id}">Удалить</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function updateStrategySelection() {
+      document.querySelectorAll('.strategy-option').forEach(option => {
+        const input = option.querySelector('input[type="radio"]');
+        option.classList.toggle('is-active', Boolean(input && input.checked));
+      });
+    }
+
+    function getInputData() {
+      return {
+        propertyCost: parseRuNumber(els.propertyCost.value),
+        initialPayment: parseRuNumber(els.initialPayment.value),
+        annualRate: Math.max(0, Number(els.annualRate.value)),
+        loanYears: Math.max(1, Number(els.loanYears.value)),
+        mortgageStartDate: els.mortgageStartDate.value
+      };
+    }
+
+    function updateTableBySelection() {
+      const names = {
+        baseline: 'Без досрочного погашения',
+        term: 'Уменьшение срока',
+        payment: 'Уменьшение платежа',
+        combined: 'Комбинированная стратегия'
+      };
+      const key = els.tableScenario.value;
+      const scenario = scenarios[key] || scenarios.baseline;
+      if (scenario) renderTable(scenario.records);
+    }
+
+    function saveState() {
+      const selectedStrategy = [...els.strategyRadios].find(r => r.checked)?.value || 'term';
+      const state = {
+        inputs: {
+          propertyCost: parseRuNumber(els.propertyCost.value),
+          initialPayment: parseRuNumber(els.initialPayment.value),
+          annualRate: Number(els.annualRate.value),
+          loanYears: Number(els.loanYears.value),
+          mortgageStartDate: els.mortgageStartDate.value
+        },
+        earlyPayments,
+        selectedStrategy,
+        selectedTableScenario: els.tableScenario.value,
+        darkTheme: document.body.classList.contains('theme-dark')
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function loadState() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      try {
+        const state = JSON.parse(raw);
+        if (state.inputs) {
+          els.propertyCost.value = formatRuNumber(state.inputs.propertyCost ?? parseRuNumber(els.propertyCost.value));
+          els.initialPayment.value = formatRuNumber(state.inputs.initialPayment ?? parseRuNumber(els.initialPayment.value));
+          els.annualRate.value = state.inputs.annualRate ?? els.annualRate.value;
+          els.loanYears.value = state.inputs.loanYears ?? els.loanYears.value;
+          els.mortgageStartDate.value = state.inputs.mortgageStartDate ?? els.mortgageStartDate.value;
+        }
+        if (Array.isArray(state.earlyPayments)) {
+          earlyPayments = state.earlyPayments
+            .map(p => ({
+              id: String(p.id ?? crypto.randomUUID()),
+              amount: Math.max(0, Number(p.amount) || 0),
+              startMonth: Math.max(1, Number(p.startMonth) || 1),
+              type: ['once', 'monthlyFrom', 'monthlyAll'].includes(p.type) ? p.type : 'once'
+            }));
+        }
+        if (state.selectedStrategy) {
+          const radio = [...els.strategyRadios].find(r => r.value === state.selectedStrategy);
+          if (radio) radio.checked = true;
+        }
+        if (state.selectedTableScenario) {
+          els.tableScenario.value = state.selectedTableScenario;
+        }
+        if (state.darkTheme) {
+          document.body.classList.add('theme-dark');
+          els.themeToggle.textContent = 'Светлый режим';
+        }
+      } catch (e) {
+        console.warn('Не удалось загрузить сохраненные данные:', e);
+      }
+    }
+
+    function calculateAll() {
+      const data = getInputData();
+      const principal = Math.max(0, data.propertyCost - data.initialPayment);
+      const totalMonths = data.loanYears * 12;
+      const monthly = calculateMonthlyPayment(principal, data.annualRate, totalMonths);
+      els.monthlyPayment.value = formatMoney(monthly);
+
+      const args = {
+        principal,
+        annualRate: data.annualRate,
+        years: data.loanYears,
+        payments: earlyPayments
+      };
+
+      scenarios = {
+        baseline: simulateLoan({ ...args, strategy: 'baseline', payments: [] }),
+        term: simulateReduceTerm(args),
+        payment: simulateReducePayment(args),
+        combined: simulateCombinedStrategy(args)
+      };
+
+      renderResults(scenarios);
+      renderChart(scenarios);
+
+      const selectedStrategy = [...els.strategyRadios].find(r => r.checked)?.value || 'term';
+      if (!els.tableScenario.value || !['baseline', 'term', 'payment', 'combined'].includes(els.tableScenario.value)) {
+        els.tableScenario.value = selectedStrategy;
+      }
+      updateStrategySelection();
+      updateTableBySelection();
+
+      els.statusText.textContent = `Расчет выполнен. Сумма кредита: ${formatMoney(principal)}. Базовый платеж: ${formatMoney(monthly)}. Досрочных платежей: ${earlyPayments.length}.`;
+
+      saveState();
+    }
+
+    function resetPrepayEditor() {
+      editPaymentId = null;
+      els.prepayAmount.value = formatRuNumber(32000);
+      els.prepayStartMonth.value = '2';
+      els.prepayType.value = 'once';
+      els.addPrepayBtn.textContent = 'Добавить платеж';
+      els.cancelEditBtn.style.display = 'none';
+    }
+
+    function fillPrepayEditor(payment) {
+      editPaymentId = payment.id;
+      els.prepayAmount.value = formatRuNumber(payment.amount);
+      els.prepayStartMonth.value = String(payment.startMonth);
+      els.prepayType.value = payment.type;
+      els.addPrepayBtn.textContent = 'Сохранить изменения';
+      els.cancelEditBtn.style.display = 'inline-block';
+    }
+
+    function handleAddOrUpdatePrepay() {
+      const amount = Math.max(0, parseRuNumber(els.prepayAmount.value));
+      const startMonth = Math.max(1, Number(els.prepayStartMonth.value));
+      const type = els.prepayType.value;
+
+      if (amount <= 0) {
+        els.statusText.textContent = 'Ошибка: сумма досрочного платежа должна быть больше 0.';
+        return;
+      }
+
+      const payload = {
+        amount,
+        startMonth: type === 'monthlyAll' ? 1 : startMonth,
+        type: ['once', 'monthlyFrom', 'monthlyAll'].includes(type) ? type : 'once'
+      };
+
+      if (editPaymentId) {
+        earlyPayments = earlyPayments.map(p => p.id === editPaymentId ? { ...p, ...payload } : p);
+      } else {
+        earlyPayments.push({ id: crypto.randomUUID(), ...payload });
+      }
+
+      renderEarlyPaymentsList();
+      resetPrepayEditor();
+      calculateAll();
+    }
+
+    function handlePrepayTableClick(event) {
+      const btn = event.target.closest('button[data-action]');
+      if (!btn) return;
+
+      const id = btn.getAttribute('data-id');
+      const action = btn.getAttribute('data-action');
+      const payment = earlyPayments.find(p => p.id === id);
+      if (!payment) return;
+
+      if (action === 'edit') {
+        fillPrepayEditor(payment);
+      }
+
+      if (action === 'delete') {
+        earlyPayments = earlyPayments.filter(p => p.id !== id);
+        renderEarlyPaymentsList();
+        if (editPaymentId === id) resetPrepayEditor();
+        calculateAll();
+      }
+    }
+
+    function wireMoneyInput(input) {
+      input.addEventListener('focus', () => {
+        input.value = String(parseRuNumber(input.value)).replace('.', ',');
+      });
+      input.addEventListener('blur', () => {
+        input.value = formatRuNumber(parseRuNumber(input.value));
+      });
+      input.addEventListener('input', calculateAll);
+    }
+
+    moneyInputs.forEach(wireMoneyInput);
+
+    [els.annualRate, els.loanYears, els.mortgageStartDate].forEach(el => {
+      el.addEventListener('input', calculateAll);
+      el.addEventListener('change', calculateAll);
+    });
+
+    els.tableScenario.addEventListener('change', () => {
+      updateTableBySelection();
+      saveState();
+    });
+
+    els.strategyRadios.forEach(radio => radio.addEventListener('change', () => {
+      updateStrategySelection();
+      const selected = [...els.strategyRadios].find(r => r.checked)?.value || 'term';
+      els.tableScenario.value = selected;
+      calculateAll();
+    }));
+
+    els.saveBtn.addEventListener('click', () => {
+      saveState();
+      els.statusText.textContent = 'Данные сохранены вручную в localStorage.';
+    });
+
+    els.themeToggle.addEventListener('click', () => {
+      document.body.classList.toggle('theme-dark');
+      const dark = document.body.classList.contains('theme-dark');
+      els.themeToggle.textContent = dark ? 'Светлый режим' : 'Черный режим';
+      saveState();
+      if (Object.keys(scenarios).length) renderChart(scenarios);
+    });
+
+    els.addPrepayBtn.addEventListener('click', handleAddOrUpdatePrepay);
+    els.cancelEditBtn.addEventListener('click', resetPrepayEditor);
+    els.prepayListBody.addEventListener('click', handlePrepayTableClick);
+
+    els.scrollToggle.addEventListener('click', () => {
+      const atBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 8;
+      window.scrollTo({ top: atBottom ? 0 : document.body.scrollHeight, behavior: 'smooth' });
+    });
+
+    window.addEventListener('scroll', updateScrollToggle);
+
+    function updateScrollToggle() {
+      const atBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 8;
+      els.scrollToggle.textContent = atBottom ? '↑' : '↓';
+      els.scrollToggle.title = atBottom ? 'Наверх' : 'Вниз';
+    }
+
+    // Инициализация
+    loadState();
+    moneyInputs.forEach(input => {
+      input.value = formatRuNumber(parseRuNumber(input.value));
+    });
+    updateStrategySelection();
+    renderEarlyPaymentsList();
+    calculateAll();
+    updateScrollToggle();
+  </script>
+</body>
+</html>
