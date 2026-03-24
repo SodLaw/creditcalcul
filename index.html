@@ -136,6 +136,7 @@
     input[type="date"] {
       font-family: inherit;
       letter-spacing: 0;
+      line-height: 1.2;
     }
 
     input[readonly] { opacity: .9; font-weight: 700; }
@@ -509,7 +510,7 @@
       const r = annualRate / 100 / 12;
       if (P <= 0 || nMonths <= 0) return 0;
       if (r === 0) return P / nMonths;
-      return P * r / (1 - Math.pow(1 + r, -nMonths));
+      return P * (r * Math.pow(1 + r, nMonths)) / (Math.pow(1 + r, nMonths) - 1);
     }
 
     function getMonthlyUserExtra(month, payments) {
@@ -524,8 +525,24 @@
       }, 0);
     }
 
+    function remainingBalanceByFormula(P, A, r, k) {
+      if (P <= 0) return 0;
+      if (k <= 0) return P;
+      if (r === 0) return Math.max(0, P - A * k);
+      return P * Math.pow(1 + r, k) - A * ((Math.pow(1 + r, k) - 1) / r);
+    }
+
+    function remainingMonthsForFixedPayment(balance, payment, r) {
+      if (balance <= 0) return 0;
+      if (payment <= 0) return Infinity;
+      if (r === 0) return balance / payment;
+      const denom = payment - r * balance;
+      if (denom <= 0) return Infinity;
+      return Math.log(payment / denom) / Math.log(1 + r);
+    }
+
     function simulateLoan({ principal, annualRate, years, strategy, payments }) {
-      const monthlyRate = annualRate / 100 / 12;
+      const r = annualRate / 100 / 12;
       const totalMonths = years * 12;
       const originalPayment = calculateMonthlyPayment(principal, annualRate, totalMonths);
 
@@ -534,64 +551,79 @@
       let totalInterest = 0;
       let records = [];
 
-      let requiredPayment = originalPayment;
-      let combinedRequiredPayment = originalPayment;
+      let currentRequiredPayment = originalPayment;
       let combinedActive = false;
+      let termAfterPrepayMonths = totalMonths;
 
       while (balance > 0.000001 && month < 1200) {
         month += 1;
 
-        const interest = balance * monthlyRate;
-        let monthlyPayment = strategy === 'combined' ? originalPayment : requiredPayment;
+        const monthsRemainPlanned = Math.max(1, totalMonths - month + 1);
+        const balanceBeforePayment = balance;
+        const interest = balanceBeforePayment * r;
 
-        if (monthlyPayment > balance + interest) monthlyPayment = balance + interest;
+        // В комбинированной стратегии клиент платит исходный платеж A
+        let paymentForThisMonth = strategy === 'combined' ? originalPayment : currentRequiredPayment;
+        paymentForThisMonth = Math.min(paymentForThisMonth, balanceBeforePayment + interest);
 
-        let principalPart = Math.max(0, monthlyPayment - interest);
-        balance = Math.max(0, balance - principalPart);
+        // Строгое обновление остатка по формуле B_k (k = 1)
+        let balanceAfterRegular = remainingBalanceByFormula(balanceBeforePayment, paymentForThisMonth, r, 1);
+        balanceAfterRegular = Math.max(0, balanceAfterRegular);
+        let principalPart = Math.max(0, balanceBeforePayment - balanceAfterRegular);
 
-        // Пользовательские досрочные платежи (могут быть множественными и регулярными)
+        // Пользовательские досрочные платежи (разовые и регулярные)
         let userExtra = 0;
-        if (balance > 0) {
-          userExtra = Math.min(getMonthlyUserExtra(month, payments), balance);
-          balance -= userExtra;
+        if (balanceAfterRegular > 0) {
+          userExtra = Math.min(getMonthlyUserExtra(month, payments), balanceAfterRegular);
+          balanceAfterRegular -= userExtra;
         }
 
-        // Пересчет required-платежа для стратегий, когда был досрочный платеж
+        // Перерасчет стратегии после досрочного платежа
         if (userExtra > 0) {
-          const monthsLeft = Math.max(1, totalMonths - month);
-          if (strategy === 'payment') {
-            requiredPayment = calculateMonthlyPayment(balance, annualRate, monthsLeft);
+          const Bnew = Math.max(0, balanceAfterRegular);
+          const nRemain = Math.max(1, totalMonths - month);
+
+          if (strategy === 'term') {
+            // A фиксирован, ищем новый срок n_new
+            termAfterPrepayMonths = remainingMonthsForFixedPayment(Bnew, originalPayment, r);
+          } else if (strategy === 'payment') {
+            // Срок фиксирован, пересчитываем платеж
+            currentRequiredPayment = calculateMonthlyPayment(Bnew, annualRate, nRemain);
           } else if (strategy === 'combined') {
-            combinedRequiredPayment = calculateMonthlyPayment(balance, annualRate, monthsLeft);
+            // Банк пересчитывает обязательный платеж, клиент продолжает платить A
+            currentRequiredPayment = calculateMonthlyPayment(Bnew, annualRate, nRemain);
             combinedActive = true;
           }
         }
 
-        // Комбинированная стратегия: после первого досрочного платежа разница идет в тело
+        // Комбинированная стратегия: extra = A - A_new каждый месяц после активации
         let combinedExtra = 0;
-        if (strategy === 'combined' && combinedActive && balance > 0) {
-          combinedExtra = Math.max(0, originalPayment - combinedRequiredPayment);
-          combinedExtra = Math.min(combinedExtra, balance);
-          balance -= combinedExtra;
+        if (strategy === 'combined' && combinedActive && balanceAfterRegular > 0) {
+          combinedExtra = Math.max(0, originalPayment - currentRequiredPayment);
+          combinedExtra = Math.min(combinedExtra, balanceAfterRegular);
+          balanceAfterRegular -= combinedExtra;
         }
 
-        const extra = userExtra + combinedExtra;
-
+        balance = Math.max(0, balanceAfterRegular);
         totalInterest += interest;
 
         records.push({
           month,
-          payment: round2(monthlyPayment),
+          payment: round2(paymentForThisMonth),
           interest: round2(interest),
           principal: round2(principalPart),
-          extra: round2(extra),
+          extra: round2(userExtra + combinedExtra),
           balance: round2(balance)
         });
       }
 
+      const effectiveMonths = strategy === 'term'
+        ? Math.min(records.length, Math.ceil(termAfterPrepayMonths || records.length))
+        : records.length;
+
       return {
         records,
-        totalMonths: records.length,
+        totalMonths: effectiveMonths,
         totalInterest: round2(totalInterest),
         monthlyPayment: round2(originalPayment)
       };
