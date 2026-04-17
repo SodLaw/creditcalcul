@@ -331,23 +331,23 @@
       <div class="input-grid">
         <div class="field">
           <label for="propertyCost">Стоимость недвижимости</label>
-          <input id="propertyCost" type="text" inputmode="decimal" value="16 254 280,60" />
+          <input id="propertyCost" type="text" inputmode="decimal" value="" />
         </div>
         <div class="field">
           <label for="initialPayment">Первоначальный взнос</label>
-          <input id="initialPayment" type="text" inputmode="decimal" value="5 000 280,60" />
+          <input id="initialPayment" type="text" inputmode="decimal" value="" />
         </div>
         <div class="field">
           <label for="annualRate">Ставка (% годовых)</label>
-          <input id="annualRate" type="number" min="0" step="0.01" value="5" />
+          <input id="annualRate" type="number" min="0" step="0.01" value="" />
         </div>
         <div class="field">
           <label for="loanYears">Срок кредита (лет)</label>
-          <input id="loanYears" type="number" min="1" step="1" value="30" />
+          <input id="loanYears" type="number" min="1" step="1" value="" />
         </div>
         <div class="field">
-          <label for="mortgageStartDate">Дата взятия ипотеки</label>
-          <input id="mortgageStartDate" type="date" value="2024-01-01" />
+          <label for="mortgageStartDate">Дата первого платежа</label>
+          <input id="mortgageStartDate" type="date" value="" />
         </div>
         <div class="field">
           <label for="monthlyPayment">Ежемесячный платеж (авторасчет)</label>
@@ -561,9 +561,8 @@
       return Math.log(payment / denom) / Math.log(1 + r);
     }
 
-    // ─── СБЕРБАНК-формула ───────────────────────────────────────────────────
-    // r = годовая_ставка / 12 / 100  (единая месячная ставка, как в Сбере)
-    // Проценты = остаток × r
+    // ─── Календарная банковская модель ─────────────────────────────────────
+    // Проценты за период = остаток × годовая_ставка × дни_периода / 365
     // Тело = платёж − проценты
     // ────────────────────────────────────────────────────────────────────────
     function simulateLoan({ principal, annualRate, years, strategy, payments, mortgageStartDate }) {
@@ -799,8 +798,8 @@
     }
 
     function getPeriodDays(month, baseDate = resolveBaseDate(els.mortgageStartDate.value)) {
-      const periodStart = addMonths(baseDate, month - 1);
-      const periodEnd = addMonths(baseDate, month);
+      const periodStart = addMonths(baseDate, month - 2);
+      const periodEnd = addMonths(baseDate, month - 1);
       const oneDayMs = 24 * 60 * 60 * 1000;
       return Math.max(1, Math.round((periodEnd - periodStart) / oneDayMs));
     }
@@ -847,7 +846,7 @@
       if (hasOverride) rateInfo.style.color = 'var(--success)';
 
       els.amortizationBody.innerHTML = displayRecords.map((r, idx) => {
-        const rowDate = addMonths(baseDate, r.month);
+        const rowDate = addMonths(baseDate, r.month - 1);
         const isFirst = idx === 0;
         const edited  = hasOverride && isFirst;
 
@@ -1006,6 +1005,28 @@
       };
     }
 
+    function hasRequiredInputs() {
+      return [
+        els.propertyCost.value,
+        els.initialPayment.value,
+        els.annualRate.value,
+        els.loanYears.value,
+        els.mortgageStartDate.value
+      ].every(v => String(v || '').trim() !== '');
+    }
+
+    function showEmptyState() {
+      els.monthlyPayment.value = '';
+      els.loanAmount.value = '';
+      els.resultsCards.innerHTML = '<div class="hint">Введите параметры кредита и дату первого платежа, чтобы выполнить расчет.</div>';
+      els.amortizationBody.innerHTML = '<tr><td colspan="9">Введите параметры кредита и дату первого платежа.</td></tr>';
+      els.statusText.textContent = 'Ожидание ввода параметров.';
+      if (chart) {
+        chart.destroy();
+        chart = null;
+      }
+    }
+
     function updateTableBySelection() {
       const names = {
         baseline: 'Без досрочного погашения',
@@ -1042,11 +1063,21 @@
       try {
         const state = JSON.parse(raw);
         if (state.inputs) {
-          els.propertyCost.value = formatRuNumber(state.inputs.propertyCost ?? parseRuNumber(els.propertyCost.value));
-          els.initialPayment.value = formatRuNumber(state.inputs.initialPayment ?? parseRuNumber(els.initialPayment.value));
-          els.annualRate.value = state.inputs.annualRate ?? els.annualRate.value;
-          els.loanYears.value = state.inputs.loanYears ?? els.loanYears.value;
-          els.mortgageStartDate.value = state.inputs.mortgageStartDate ?? els.mortgageStartDate.value;
+          if (state.inputs.propertyCost !== undefined && state.inputs.propertyCost !== null && state.inputs.propertyCost !== '') {
+            els.propertyCost.value = formatRuNumber(state.inputs.propertyCost);
+          }
+          if (state.inputs.initialPayment !== undefined && state.inputs.initialPayment !== null && state.inputs.initialPayment !== '') {
+            els.initialPayment.value = formatRuNumber(state.inputs.initialPayment);
+          }
+          if (state.inputs.annualRate !== undefined && state.inputs.annualRate !== null && state.inputs.annualRate !== '') {
+            els.annualRate.value = state.inputs.annualRate;
+          }
+          if (state.inputs.loanYears !== undefined && state.inputs.loanYears !== null && state.inputs.loanYears !== '') {
+            els.loanYears.value = state.inputs.loanYears;
+          }
+          if (state.inputs.mortgageStartDate) {
+            els.mortgageStartDate.value = state.inputs.mortgageStartDate;
+          }
         }
         if (Array.isArray(state.earlyPayments)) {
           earlyPayments = state.earlyPayments
@@ -1076,6 +1107,13 @@
     }
 
     function calculateAll() {
+      if (!hasRequiredInputs()) {
+        scenarios = {};
+        showEmptyState();
+        saveState();
+        return;
+      }
+
       const data = getInputData();
       const principal = Math.max(0, data.propertyCost - data.initialPayment);
       const totalMonths = data.loanYears * 12;
@@ -1256,7 +1294,9 @@
     // Инициализация
     loadState();
     moneyInputs.forEach(input => {
-      input.value = formatRuNumber(parseRuNumber(input.value));
+      if (String(input.value || '').trim() !== '') {
+        input.value = formatRuNumber(parseRuNumber(input.value));
+      }
     });
     updateStrategySelection();
     renderEarlyPaymentsList();
