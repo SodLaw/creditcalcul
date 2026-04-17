@@ -584,9 +584,14 @@
 
         const balanceBeforePayment = balance;
 
-        // Проценты за период: остаток × годовая ставка × фактические дни / 365
+        // Проценты за период: посуточная сумма (банковская модель)
         const periodDays = getPeriodDays(month, baseDate);
-        const interest = balanceBeforePayment * effectiveAnnualRate * periodDays / 365;
+        let interest = 0;
+        const tempBalance = balanceBeforePayment;
+        for (let d = 0; d < periodDays; d += 1) {
+          interest += tempBalance * effectiveAnnualRate / 365;
+        }
+        interest = round2(interest);
 
         // Для комбинированной стратегии "Платеж" берется из обязательного платежа (как в "уменьшение платежа"),
         // а разница до исходного аннуитета уходит в "Доп. погашение".
