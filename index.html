@@ -357,6 +357,10 @@
           <label for="loanAmount">Сумма взятого долга (авторасчет)</label>
           <input id="loanAmount" type="text" readonly />
         </div>
+        <div class="field">
+          <label for="firstStatementInterest">Проценты 1-го платежа (из выписки)</label>
+          <input id="firstStatementInterest" type="text" inputmode="decimal" value="" />
+        </div>
       </div>
 
       <div class="field" style="margin-top: 12px;">
@@ -465,6 +469,7 @@
       loanYears: document.getElementById('loanYears'),
       monthlyPayment: document.getElementById('monthlyPayment'),
       loanAmount: document.getElementById('loanAmount'),
+      firstStatementInterest: document.getElementById('firstStatementInterest'),
       mortgageStartDate: document.getElementById('mortgageStartDate'),
       resultsCards: document.getElementById('resultsCards'),
       balanceChart: document.getElementById('balanceChart'),
@@ -488,7 +493,7 @@
     let earlyPayments = [];
     let editPaymentId = null;
 
-    const moneyInputs = [els.propertyCost, els.initialPayment, els.prepayAmount];
+    const moneyInputs = [els.propertyCost, els.initialPayment, els.firstStatementInterest, els.prepayAmount];
 
     function round2(v) { return Math.round((v + Number.EPSILON) * 100) / 100; }
 
@@ -567,7 +572,10 @@
     function simulateLoan({ principal, annualRate, years, strategy, payments, mortgageStartDate }) {
       const totalMonths = years * 12;
       const originalPayment = calculateMonthlyPayment(principal, annualRate, totalMonths);
-      const effectiveAnnualRate = effectiveRateOverride ?? (annualRate / 100);
+      const effectiveAnnualRate = effectiveRateOverride;
+      if (effectiveAnnualRate === null) {
+        return { records: [], totalMonths: 0, totalInterest: 0, monthlyPayment: round2(originalPayment) };
+      }
       const baseDate = resolveBaseDate(mortgageStartDate);
 
       let month = 0;
@@ -824,8 +832,7 @@
         resetBtn.style.marginLeft = '10px';
         resetBtn.textContent = 'Сбросить корректировку';
         resetBtn.addEventListener('click', () => {
-          effectiveRateOverride = null;
-          calculateAll();
+          resetCalibrationAndRecalculate();
         });
         els.tableScenario.parentElement.appendChild(resetBtn);
       }
@@ -909,8 +916,10 @@
         if (val > 0 && initialBalance > 0) {
           // annual_eff = проценты_м1 * 365 / (остаток_до_м1 * days_м1)
           effectiveRateOverride = (val * 365) / (initialBalance * daysInMonth1);
+          els.firstStatementInterest.value = formatRuNumber(val);
         } else {
           effectiveRateOverride = null;
+          els.firstStatementInterest.value = '';
         }
         calculateAll();
       }
@@ -1018,16 +1027,24 @@
       ].every(v => String(v || '').trim() !== '');
     }
 
-    function showEmptyState() {
+    function showEmptyState(message = 'Введите параметры кредита и дату первого платежа, чтобы выполнить расчет.') {
       els.monthlyPayment.value = '';
       els.loanAmount.value = '';
-      els.resultsCards.innerHTML = '<div class="hint">Введите параметры кредита и дату первого платежа, чтобы выполнить расчет.</div>';
-      els.amortizationBody.innerHTML = '<tr><td colspan="8">Введите параметры кредита и дату первого платежа.</td></tr>';
+      els.resultsCards.innerHTML = `<div class="hint">${message}</div>`;
+      els.amortizationBody.innerHTML = `<tr><td colspan="8">${message}</td></tr>`;
       els.statusText.textContent = 'Ожидание ввода параметров.';
       if (chart) {
         chart.destroy();
         chart = null;
       }
+    }
+
+    function calibrateEffectiveRateFromFirstStatementInterest(balance0, baseDate) {
+      const interest1 = parseRuNumber(els.firstStatementInterest.value);
+      const days1 = getPeriodDays(1, baseDate);
+      if (balance0 <= 0 || interest1 <= 0 || days1 <= 0) return false;
+      effectiveRateOverride = (interest1 * 365) / (balance0 * days1);
+      return true;
     }
 
     function updateTableBySelection() {
@@ -1046,6 +1063,7 @@
       if (effectiveRateOverride !== null) {
         effectiveRateOverride = null;
       }
+      els.firstStatementInterest.value = '';
       calculateAll();
     }
 
@@ -1057,7 +1075,8 @@
           initialPayment: parseRuNumber(els.initialPayment.value),
           annualRate: Number(els.annualRate.value),
           loanYears: Number(els.loanYears.value),
-          mortgageStartDate: els.mortgageStartDate.value
+          mortgageStartDate: els.mortgageStartDate.value,
+          firstStatementInterest: parseRuNumber(els.firstStatementInterest.value)
         },
         earlyPayments,
         selectedStrategy,
@@ -1087,6 +1106,9 @@
           }
           if (state.inputs.mortgageStartDate) {
             els.mortgageStartDate.value = state.inputs.mortgageStartDate;
+          }
+          if (state.inputs.firstStatementInterest !== undefined && state.inputs.firstStatementInterest !== null && state.inputs.firstStatementInterest !== '') {
+            els.firstStatementInterest.value = formatRuNumber(state.inputs.firstStatementInterest);
           }
         }
         if (Array.isArray(state.earlyPayments)) {
@@ -1125,11 +1147,19 @@
       }
 
       const data = getInputData();
+      const baseDate = resolveBaseDate(data.mortgageStartDate);
       const principal = Math.max(0, data.propertyCost - data.initialPayment);
       const totalMonths = data.loanYears * 12;
       const monthly = calculateMonthlyPayment(principal, data.annualRate, totalMonths);
       els.monthlyPayment.value = formatMoney(monthly);
       els.loanAmount.value = formatMoney(principal);
+
+      if (!calibrateEffectiveRateFromFirstStatementInterest(principal, baseDate) && effectiveRateOverride === null) {
+        scenarios = {};
+        showEmptyState('Введите проценты 1-го платежа из выписки для калибровки ставки.');
+        saveState();
+        return;
+      }
 
       const args = {
         principal,
