@@ -447,7 +447,6 @@
               <th>Обязательный платёж</th>
               <th>Досрочно</th>
               <th>Итоговый платёж</th>
-              <th>Остаток после платежа</th>
             </tr>
           </thead>
           <tbody id="amortizationBody"></tbody>
@@ -871,7 +870,6 @@
           <td>${formatMoney(r.requiredPayment ?? r.payment)}</td>
           <td>${formatMoney(r.extra)}</td>
           <td>${formatMoney(r.totalPayment ?? (r.payment + r.extra))}</td>
-          <td>${formatMoney(r.balance)}</td>
         </tr>
       `;
       }).join('');
@@ -1024,7 +1022,7 @@
       els.monthlyPayment.value = '';
       els.loanAmount.value = '';
       els.resultsCards.innerHTML = '<div class="hint">Введите параметры кредита и дату первого платежа, чтобы выполнить расчет.</div>';
-      els.amortizationBody.innerHTML = '<tr><td colspan="9">Введите параметры кредита и дату первого платежа.</td></tr>';
+      els.amortizationBody.innerHTML = '<tr><td colspan="8">Введите параметры кредита и дату первого платежа.</td></tr>';
       els.statusText.textContent = 'Ожидание ввода параметров.';
       if (chart) {
         chart.destroy();
