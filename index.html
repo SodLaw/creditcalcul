@@ -595,8 +595,11 @@
         const periodDays = getPeriodDays(month, baseDate);
         let interest = 0;
         const tempBalance = balanceBeforePayment;
+        let currentDate = addMonths(baseDate, month - 2);
         for (let d = 0; d < periodDays; d += 1) {
-          interest += tempBalance * effectiveAnnualRate / 365;
+          const yearDays = isLeapYear(currentDate.getFullYear()) ? 366 : 365;
+          interest += tempBalance * effectiveAnnualRate / yearDays;
+          currentDate.setDate(currentDate.getDate() + 1);
         }
         interest = round2(interest);
 
@@ -799,6 +802,10 @@
     function resolveBaseDate(dateString) {
       if (dateString) return new Date(`${dateString}T00:00:00`);
       return new Date();
+    }
+
+    function isLeapYear(year) {
+      return (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
     }
 
     function formatMonthDate(dateObj) {
