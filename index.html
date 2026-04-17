@@ -566,10 +566,11 @@
     // Проценты = остаток × r
     // Тело = платёж − проценты
     // ────────────────────────────────────────────────────────────────────────
-    function simulateLoan({ principal, annualRate, years, strategy, payments }) {
-      const r = annualRate / 100 / 12;
+    function simulateLoan({ principal, annualRate, years, strategy, payments, mortgageStartDate }) {
       const totalMonths = years * 12;
       const originalPayment = calculateMonthlyPayment(principal, annualRate, totalMonths);
+      const effectiveAnnualRate = effectiveRateOverride ?? (annualRate / 100);
+      const baseDate = resolveBaseDate(mortgageStartDate);
 
       let month = 0;
       let balance = principal;
@@ -578,15 +579,15 @@
 
       let currentRequiredPayment = originalPayment;
       let combinedActive = false;
-      let termAfterPrepayMonths = totalMonths;
 
       while (balance > 0.000001 && month < 1200) {
         month += 1;
 
         const balanceBeforePayment = balance;
 
-        // Проценты за месяц: остаток × месячная ставка
-        const interest = balanceBeforePayment * r;
+        // Проценты за период: остаток × годовая ставка × фактические дни / 365
+        const periodDays = getPeriodDays(month, baseDate);
+        const interest = balanceBeforePayment * effectiveAnnualRate * periodDays / 365;
 
         // Для комбинированной стратегии "Платеж" берется из обязательного платежа (как в "уменьшение платежа"),
         // а разница до исходного аннуитета уходит в "Доп. погашение".
@@ -610,7 +611,8 @@
           const nRemain = Math.max(1, totalMonths - month);
 
           if (strategy === 'term') {
-            termAfterPrepayMonths = remainingMonthsForFixedPayment(Bnew, originalPayment, r);
+            // В режиме "уменьшение срока" сохраняем обязательный платёж.
+            // Фактический срок берется по длине рассчитанных records.
           } else if (strategy === 'payment') {
             currentRequiredPayment = calculateMonthlyPayment(Bnew, annualRate, nRemain);
           } else if (strategy === 'combined') {
@@ -649,13 +651,9 @@
         });
       }
 
-      const effectiveMonths = strategy === 'term'
-        ? Math.min(records.length, Math.ceil(termAfterPrepayMonths || records.length))
-        : records.length;
-
       return {
         records,
-        totalMonths: effectiveMonths,
+        totalMonths: records.length,
         totalInterest: round2(totalInterest),
         monthlyPayment: round2(originalPayment)
       };
@@ -723,7 +721,7 @@
         paymentRecords.length,
         combinedRecords.length
       );
-      const baseDate = els.mortgageStartDate.value ? new Date(`${els.mortgageStartDate.value}T00:00:00`) : new Date();
+      const baseDate = resolveBaseDate(els.mortgageStartDate.value);
       const labels = Array.from({ length: maxLen }, (_, i) => {
         const d = addMonths(baseDate, i);
         const y = d.getFullYear();
@@ -787,6 +785,11 @@
       return d;
     }
 
+    function resolveBaseDate(dateString) {
+      if (dateString) return new Date(`${dateString}T00:00:00`);
+      return new Date();
+    }
+
     function formatMonthDate(dateObj) {
       return new Intl.DateTimeFormat('ru-RU', { year: 'numeric', month: 'long' }).format(dateObj);
     }
@@ -795,10 +798,7 @@
       return new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(dateObj);
     }
 
-    function getPeriodDays(month) {
-      const baseDate = els.mortgageStartDate.value
-        ? new Date(`${els.mortgageStartDate.value}T00:00:00`)
-        : new Date();
+    function getPeriodDays(month, baseDate = resolveBaseDate(els.mortgageStartDate.value)) {
       const periodStart = addMonths(baseDate, month - 1);
       const periodEnd = addMonths(baseDate, month);
       const oneDayMs = 24 * 60 * 60 * 1000;
@@ -810,9 +810,7 @@
       const displayRecords = applyEffectiveRate(records);
       const hasOverride = effectiveRateOverride !== null;
 
-      const baseDate = els.mortgageStartDate.value
-        ? new Date(`${els.mortgageStartDate.value}T00:00:00`)
-        : new Date();
+      const baseDate = resolveBaseDate(els.mortgageStartDate.value);
 
       // Кнопка сброса
       let resetBtn = document.getElementById('resetOverridesBtn');
@@ -824,8 +822,7 @@
         resetBtn.textContent = 'Сбросить корректировку';
         resetBtn.addEventListener('click', () => {
           effectiveRateOverride = null;
-          updateTableBySelection();
-          renderChart(scenarios);
+          calculateAll();
         });
         els.tableScenario.parentElement.appendChild(resetBtn);
       }
@@ -913,8 +910,7 @@
         } else {
           effectiveRateOverride = null;
         }
-        updateTableBySelection();
-        renderChart(scenarios);
+        calculateAll();
       }
 
       input.addEventListener('blur', commit);
@@ -966,49 +962,8 @@
     }
 
     function applyEffectiveRate(records) {
-      const annualRate = effectiveRateOverride;
-      if (annualRate === null || records.length === 0) return records;
-
-      // Начальный остаток до первого платежа
-      const initialBalance = round2(records[0].startBalance ?? (records[0].balance + records[0].principal + records[0].extra));
-      const fixedPayment = Math.max(0, parseRuNumber(els.monthlyPayment.value)) || round2(records[0].payment);
-      const extraByMonth = new Map(records.map(rec => [rec.month, Math.max(0, Number(rec.extra) || 0)]));
-
-      const adjusted = [];
-      let balance = initialBalance;
-      let month = 0;
-      const hardLimit = Math.max(getLoanMonthsLimit(), records.length, 1) + 240;
-
-      while (balance > 0 && month < hardLimit) {
-        month += 1;
-        const startBalance = balance;
-        const periodDays = getPeriodDays(month);
-        // 1. Проценты = остаток × annual_eff × days / 365
-        const interest = round2((startBalance * annualRate * periodDays) / 365);
-        // 2. Тело = платёж − проценты (не больше остатка)
-        const principal = round2(Math.max(0, Math.min(fixedPayment - interest, startBalance)));
-        const payment = round2(interest + principal);
-        // 3. Досрочка берется из выбранного сценария в тот же месяц
-        const extra = round2(Math.min(extraByMonth.get(month) || 0, Math.max(0, startBalance - principal)));
-        // 4. Новый остаток = старый − тело − досрочное погашение
-        const newBalance = round2(Math.max(0, startBalance - principal - extra));
-        const baseRec = records[month - 1] || records[records.length - 1];
-
-        adjusted.push({
-          ...baseRec,
-          month,
-          startBalance: round2(startBalance),
-          requiredPayment: round2(payment),
-          payment: round2(payment),
-          interest,
-          principal,
-          extra,
-          totalPayment: round2(payment + extra),
-          balance: newBalance
-        });
-        balance = newBalance;
-      }
-      return adjusted;
+      // Единая расчетная модель уже применяется в simulateLoan().
+      return records;
     }
 
     // Текущий ключ сценария, показанного в таблице
@@ -1132,7 +1087,8 @@
         principal,
         annualRate: data.annualRate,
         years: data.loanYears,
-        payments: earlyPayments
+        payments: earlyPayments,
+        mortgageStartDate: data.mortgageStartDate
       };
 
       scenarios = {
