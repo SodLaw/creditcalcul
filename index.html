@@ -581,8 +581,9 @@
         // Проценты за месяц: остаток × месячная ставка
         const interest = balanceBeforePayment * r;
 
-        // В комбинированной стратегии клиент платит исходный платеж A
-        let paymentForThisMonth = strategy === 'combined' ? originalPayment : currentRequiredPayment;
+        // Для комбинированной стратегии "Платеж" берется из обязательного платежа (как в "уменьшение платежа"),
+        // а разница до исходного аннуитета уходит в "Доп. погашение".
+        let paymentForThisMonth = currentRequiredPayment;
         paymentForThisMonth = Math.min(paymentForThisMonth, balanceBeforePayment + interest);
 
         // Тело кредита = платёж − проценты
@@ -930,22 +931,29 @@
 
       // Начальный остаток до первого платежа
       const initialBalance = round2(records[0].balance + records[0].principal + records[0].extra);
-      const fixedPayment   = records[0].payment;
+      const fixedPayment = Math.max(0, parseRuNumber(els.monthlyPayment.value)) || round2(records[0].payment);
+      const extraByMonth = new Map(records.map(rec => [rec.month, Math.max(0, Number(rec.extra) || 0)]));
 
       const adjusted = [];
       let balance = initialBalance;
+      let month = 0;
+      const hardLimit = Math.max(getLoanMonthsLimit(), records.length, 1) + 240;
 
-      for (const rec of records) {
+      while (balance > 0 && month < hardLimit) {
+        month += 1;
         // 1. Проценты = остаток × r_eff
-        const interest  = round2(balance * r);
+        const interest = round2(balance * r);
         // 2. Тело = платёж − проценты (не больше остатка)
-        const principal = round2(Math.min(fixedPayment - interest, balance));
-        // 3. Новый остаток = старый − тело − досрочное погашение
-        const newBalance = round2(Math.max(0, balance - principal - rec.extra));
+        const principal = round2(Math.max(0, Math.min(fixedPayment - interest, balance)));
+        const payment = round2(interest + principal);
+        // 3. Досрочка берется из выбранного сценария в тот же месяц
+        const extra = round2(Math.min(extraByMonth.get(month) || 0, Math.max(0, balance - principal)));
+        // 4. Новый остаток = старый − тело − досрочное погашение
+        const newBalance = round2(Math.max(0, balance - principal - extra));
+        const baseRec = records[month - 1] || records[records.length - 1];
 
-        adjusted.push({ ...rec, interest, principal, payment: round2(interest + principal), balance: newBalance });
+        adjusted.push({ ...baseRec, month, payment, interest, principal, extra, balance: newBalance });
         balance = newBalance;
-        if (balance <= 0) break;
       }
       return adjusted;
     }
