@@ -1042,6 +1042,13 @@
       if (scenario) renderTable(scenario.records, key);
     }
 
+    function resetCalibrationAndRecalculate() {
+      if (effectiveRateOverride !== null) {
+        effectiveRateOverride = null;
+      }
+      calculateAll();
+    }
+
     function saveState() {
       const selectedStrategy = [...els.strategyRadios].find(r => r.checked)?.value || 'term';
       const state = {
@@ -1238,10 +1245,13 @@
 
     moneyInputs.forEach(wireMoneyInput);
 
-    [els.annualRate, els.loanYears, els.mortgageStartDate].forEach(el => {
+    [els.annualRate, els.loanYears].forEach(el => {
       el.addEventListener('input', calculateAll);
       el.addEventListener('change', calculateAll);
     });
+
+    els.mortgageStartDate.addEventListener('input', resetCalibrationAndRecalculate);
+    els.mortgageStartDate.addEventListener('change', resetCalibrationAndRecalculate);
 
     els.loanYears.addEventListener('input', updatePrepayStartMonthField);
     els.prepayType.addEventListener('change', updatePrepayStartMonthField);
