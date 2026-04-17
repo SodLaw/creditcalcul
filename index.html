@@ -319,7 +319,7 @@
   </style>
 </head>
 <body>
-  <button class="theme-toggle" id="themeToggle">Черный режим</button>
+  <button class="theme-toggle" id="themeToggle">Темный режим</button>
   <button class="save-toggle" id="saveBtn">Сохранить</button>
   <button class="scroll-toggle" id="scrollToggle" title="Вниз">↓</button>
 
@@ -893,6 +893,36 @@
     //   B_n = B_{n-1} − тело_n
     // ────────────────────────────────────────────────────────────────────────
     let effectiveRateOverride = {};
+    let lastCustomStartMonth = 2;
+
+    function parseStartMonth(rawValue) {
+      const month = Number.parseInt(String(rawValue), 10);
+      return Number.isFinite(month) ? month : 1;
+    }
+
+    function getLoanMonthsLimit() {
+      const years = Math.max(1, Number(els.loanYears.value));
+      return Math.max(1, Math.round(years * 12));
+    }
+
+    function updatePrepayStartMonthField() {
+      const limit = getLoanMonthsLimit();
+      const type = els.prepayType.value;
+      els.prepayStartMonth.max = String(limit);
+
+      if (type === 'monthlyAll') {
+        lastCustomStartMonth = Math.min(limit, Math.max(1, parseStartMonth(els.prepayStartMonth.value)));
+        els.prepayStartMonth.value = '1';
+        els.prepayStartMonth.readOnly = true;
+        return;
+      }
+
+      const fallback = Math.min(limit, Math.max(1, lastCustomStartMonth));
+      const current = Math.min(limit, Math.max(1, parseStartMonth(els.prepayStartMonth.value) || fallback));
+      els.prepayStartMonth.readOnly = false;
+      els.prepayStartMonth.value = String(current);
+      lastCustomStartMonth = current;
+    }
 
     function applyEffectiveRate(records, scenarioKey) {
       const r = effectiveRateOverride[scenarioKey];
@@ -1021,6 +1051,8 @@
         if (state.darkTheme) {
           document.body.classList.add('theme-dark');
           els.themeToggle.textContent = 'Светлый режим';
+        } else {
+          els.themeToggle.textContent = 'Темный режим';
         }
       } catch (e) {
         console.warn('Не удалось загрузить сохраненные данные:', e);
@@ -1068,6 +1100,8 @@
       els.prepayAmount.value = formatRuNumber(32000);
       els.prepayStartMonth.value = '2';
       els.prepayType.value = 'once';
+      lastCustomStartMonth = 2;
+      updatePrepayStartMonthField();
       els.addPrepayBtn.textContent = 'Добавить платеж';
       els.cancelEditBtn.style.display = 'none';
     }
@@ -1077,13 +1111,16 @@
       els.prepayAmount.value = formatRuNumber(payment.amount);
       els.prepayStartMonth.value = String(payment.startMonth);
       els.prepayType.value = payment.type;
+      if (payment.type !== 'monthlyAll') lastCustomStartMonth = Math.max(1, Number(payment.startMonth) || 1);
+      updatePrepayStartMonthField();
       els.addPrepayBtn.textContent = 'Сохранить изменения';
       els.cancelEditBtn.style.display = 'inline-block';
     }
 
     function handleAddOrUpdatePrepay() {
       const amount = Math.max(0, parseRuNumber(els.prepayAmount.value));
-      const startMonth = Math.max(1, Number(els.prepayStartMonth.value));
+      const monthLimit = getLoanMonthsLimit();
+      const startMonth = Math.min(monthLimit, Math.max(1, parseStartMonth(els.prepayStartMonth.value)));
       const type = els.prepayType.value;
 
       if (amount <= 0) {
@@ -1096,6 +1133,7 @@
         startMonth: type === 'monthlyAll' ? 1 : startMonth,
         type: ['once', 'monthlyFrom', 'monthlyAll'].includes(type) ? type : 'once'
       };
+      if (type !== 'monthlyAll') lastCustomStartMonth = startMonth;
 
       if (editPaymentId) {
         earlyPayments = earlyPayments.map(p => p.id === editPaymentId ? { ...p, ...payload } : p);
@@ -1146,6 +1184,15 @@
       el.addEventListener('change', calculateAll);
     });
 
+    els.loanYears.addEventListener('input', updatePrepayStartMonthField);
+    els.prepayType.addEventListener('change', updatePrepayStartMonthField);
+    els.prepayStartMonth.addEventListener('input', () => {
+      if (els.prepayType.value === 'monthlyAll') return;
+      const monthLimit = getLoanMonthsLimit();
+      const value = Math.min(monthLimit, Math.max(1, parseStartMonth(els.prepayStartMonth.value)));
+      lastCustomStartMonth = value;
+    });
+
     els.tableScenario.addEventListener('change', () => {
       updateTableBySelection();
       saveState();
@@ -1166,7 +1213,7 @@
     els.themeToggle.addEventListener('click', () => {
       document.body.classList.toggle('theme-dark');
       const dark = document.body.classList.contains('theme-dark');
-      els.themeToggle.textContent = dark ? 'Светлый режим' : 'Черный режим';
+      els.themeToggle.textContent = dark ? 'Светлый режим' : 'Темный режим';
       saveState();
       if (Object.keys(scenarios).length) renderChart(scenarios);
     });
@@ -1195,6 +1242,7 @@
     });
     updateStrategySelection();
     renderEarlyPaymentsList();
+    updatePrepayStartMonthField();
     calculateAll();
     updateScrollToggle();
   </script>
