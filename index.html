@@ -357,10 +357,6 @@
           <label for="loanAmount">Сумма взятого долга (авторасчет)</label>
           <input id="loanAmount" type="text" readonly />
         </div>
-        <div class="field">
-          <label for="firstStatementInterest">Проценты 1-го платежа (из выписки)</label>
-          <input id="firstStatementInterest" type="text" inputmode="decimal" value="" />
-        </div>
       </div>
 
       <div class="field" style="margin-top: 12px;">
@@ -469,7 +465,6 @@
       loanYears: document.getElementById('loanYears'),
       monthlyPayment: document.getElementById('monthlyPayment'),
       loanAmount: document.getElementById('loanAmount'),
-      firstStatementInterest: document.getElementById('firstStatementInterest'),
       mortgageStartDate: document.getElementById('mortgageStartDate'),
       resultsCards: document.getElementById('resultsCards'),
       balanceChart: document.getElementById('balanceChart'),
@@ -493,7 +488,7 @@
     let earlyPayments = [];
     let editPaymentId = null;
 
-    const moneyInputs = [els.propertyCost, els.initialPayment, els.firstStatementInterest, els.prepayAmount];
+    const moneyInputs = [els.propertyCost, els.initialPayment, els.prepayAmount];
 
     function round2(v) { return Math.round((v + Number.EPSILON) * 100) / 100; }
 
@@ -572,10 +567,7 @@
     function simulateLoan({ principal, annualRate, years, strategy, payments, mortgageStartDate }) {
       const totalMonths = years * 12;
       const originalPayment = calculateMonthlyPayment(principal, annualRate, totalMonths);
-      const effectiveAnnualRate = effectiveRateOverride;
-      if (effectiveAnnualRate === null) {
-        return { records: [], totalMonths: 0, totalInterest: 0, monthlyPayment: round2(originalPayment) };
-      }
+      const effectiveAnnualRate = effectiveRateOverride ?? (annualRate / 100);
       const baseDate = resolveBaseDate(mortgageStartDate);
 
       let month = 0;
@@ -923,10 +915,8 @@
         if (val > 0 && initialBalance > 0) {
           // annual_eff = проценты_м1 * 365 / (остаток_до_м1 * days_м1)
           effectiveRateOverride = (val * 365) / (initialBalance * daysInMonth1);
-          els.firstStatementInterest.value = formatRuNumber(val);
         } else {
           effectiveRateOverride = null;
-          els.firstStatementInterest.value = '';
         }
         calculateAll();
       }
@@ -1046,14 +1036,6 @@
       }
     }
 
-    function calibrateEffectiveRateFromFirstStatementInterest(balance0, baseDate) {
-      const interest1 = parseRuNumber(els.firstStatementInterest.value);
-      const days1 = getPeriodDays(1, baseDate);
-      if (balance0 <= 0 || interest1 <= 0 || days1 <= 0) return false;
-      effectiveRateOverride = (interest1 * 365) / (balance0 * days1);
-      return true;
-    }
-
     function updateTableBySelection() {
       const names = {
         baseline: 'Без досрочного погашения',
@@ -1070,7 +1052,6 @@
       if (effectiveRateOverride !== null) {
         effectiveRateOverride = null;
       }
-      els.firstStatementInterest.value = '';
       calculateAll();
     }
 
@@ -1082,8 +1063,7 @@
           initialPayment: parseRuNumber(els.initialPayment.value),
           annualRate: Number(els.annualRate.value),
           loanYears: Number(els.loanYears.value),
-          mortgageStartDate: els.mortgageStartDate.value,
-          firstStatementInterest: parseRuNumber(els.firstStatementInterest.value)
+          mortgageStartDate: els.mortgageStartDate.value
         },
         earlyPayments,
         selectedStrategy,
@@ -1113,9 +1093,6 @@
           }
           if (state.inputs.mortgageStartDate) {
             els.mortgageStartDate.value = state.inputs.mortgageStartDate;
-          }
-          if (state.inputs.firstStatementInterest !== undefined && state.inputs.firstStatementInterest !== null && state.inputs.firstStatementInterest !== '') {
-            els.firstStatementInterest.value = formatRuNumber(state.inputs.firstStatementInterest);
           }
         }
         if (Array.isArray(state.earlyPayments)) {
@@ -1154,19 +1131,11 @@
       }
 
       const data = getInputData();
-      const baseDate = resolveBaseDate(data.mortgageStartDate);
       const principal = Math.max(0, data.propertyCost - data.initialPayment);
       const totalMonths = data.loanYears * 12;
       const monthly = calculateMonthlyPayment(principal, data.annualRate, totalMonths);
       els.monthlyPayment.value = formatMoney(monthly);
       els.loanAmount.value = formatMoney(principal);
-
-      if (!calibrateEffectiveRateFromFirstStatementInterest(principal, baseDate) && effectiveRateOverride === null) {
-        scenarios = {};
-        showEmptyState('Введите проценты 1-го платежа из выписки для калибровки ставки.');
-        saveState();
-        return;
-      }
 
       const args = {
         principal,
