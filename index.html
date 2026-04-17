@@ -319,7 +319,7 @@
   </style>
 </head>
 <body>
-  <button class="theme-toggle" id="themeToggle">Черный режим</button>
+  <button class="theme-toggle" id="themeToggle">Темный режим</button>
   <button class="save-toggle" id="saveBtn">Сохранить</button>
   <button class="scroll-toggle" id="scrollToggle" title="Вниз">↓</button>
 
@@ -331,27 +331,35 @@
       <div class="input-grid">
         <div class="field">
           <label for="propertyCost">Стоимость недвижимости</label>
-          <input id="propertyCost" type="text" inputmode="decimal" value="16 254 280,60" />
+          <input id="propertyCost" type="text" inputmode="decimal" value="" />
         </div>
         <div class="field">
           <label for="initialPayment">Первоначальный взнос</label>
-          <input id="initialPayment" type="text" inputmode="decimal" value="5 000 280,60" />
+          <input id="initialPayment" type="text" inputmode="decimal" value="" />
         </div>
         <div class="field">
           <label for="annualRate">Ставка (% годовых)</label>
-          <input id="annualRate" type="number" min="0" step="0.01" value="5" />
+          <input id="annualRate" type="number" min="0" step="0.01" value="" />
         </div>
         <div class="field">
           <label for="loanYears">Срок кредита (лет)</label>
-          <input id="loanYears" type="number" min="1" step="1" value="30" />
+          <input id="loanYears" type="number" min="1" step="1" value="" />
         </div>
         <div class="field">
-          <label for="mortgageStartDate">Дата взятия ипотеки</label>
-          <input id="mortgageStartDate" type="date" value="2024-01-01" />
+          <label for="mortgageStartDate">Дата первого платежа</label>
+          <input id="mortgageStartDate" type="date" value="" />
         </div>
         <div class="field">
           <label for="monthlyPayment">Ежемесячный платеж (авторасчет)</label>
           <input id="monthlyPayment" type="text" readonly />
+        </div>
+        <div class="field">
+          <label for="loanAmount">Сумма взятого долга (авторасчет)</label>
+          <input id="loanAmount" type="text" readonly />
+        </div>
+        <div class="field">
+          <label for="firstStatementInterest">Проценты 1-го платежа (из выписки)</label>
+          <input id="firstStatementInterest" type="text" inputmode="decimal" value="" />
         </div>
       </div>
 
@@ -437,11 +445,12 @@
             <tr>
               <th>Дата</th>
               <th>Месяц</th>
-              <th>Платеж</th>
+              <th>Остаток на начало периода</th>
               <th title="Нажмите на ячейку строки 1, чтобы ввести реальное значение из выписки">Проценты ✏️</th>
-              <th>Тело кредита</th>
-              <th>Доп. погашение</th>
-              <th>Остаток долга</th>
+              <th>Основной долг</th>
+              <th>Обязательный платёж</th>
+              <th>Досрочно</th>
+              <th>Итоговый платёж</th>
             </tr>
           </thead>
           <tbody id="amortizationBody"></tbody>
@@ -459,6 +468,8 @@
       annualRate: document.getElementById('annualRate'),
       loanYears: document.getElementById('loanYears'),
       monthlyPayment: document.getElementById('monthlyPayment'),
+      loanAmount: document.getElementById('loanAmount'),
+      firstStatementInterest: document.getElementById('firstStatementInterest'),
       mortgageStartDate: document.getElementById('mortgageStartDate'),
       resultsCards: document.getElementById('resultsCards'),
       balanceChart: document.getElementById('balanceChart'),
@@ -482,7 +493,7 @@
     let earlyPayments = [];
     let editPaymentId = null;
 
-    const moneyInputs = [els.propertyCost, els.initialPayment, els.prepayAmount];
+    const moneyInputs = [els.propertyCost, els.initialPayment, els.firstStatementInterest, els.prepayAmount];
 
     function round2(v) { return Math.round((v + Number.EPSILON) * 100) / 100; }
 
@@ -554,15 +565,18 @@
       return Math.log(payment / denom) / Math.log(1 + r);
     }
 
-    // ─── СБЕРБАНК-формула ───────────────────────────────────────────────────
-    // r = годовая_ставка / 12 / 100  (единая месячная ставка, как в Сбере)
-    // Проценты = остаток × r
+    // ─── Календарная банковская модель ─────────────────────────────────────
+    // Проценты за период = остаток × годовая_ставка × дни_периода / 365
     // Тело = платёж − проценты
     // ────────────────────────────────────────────────────────────────────────
-    function simulateLoan({ principal, annualRate, years, strategy, payments }) {
-      const r = annualRate / 100 / 12;
+    function simulateLoan({ principal, annualRate, years, strategy, payments, mortgageStartDate }) {
       const totalMonths = years * 12;
       const originalPayment = calculateMonthlyPayment(principal, annualRate, totalMonths);
+      const effectiveAnnualRate = effectiveRateOverride;
+      if (effectiveAnnualRate === null) {
+        return { records: [], totalMonths: 0, totalInterest: 0, monthlyPayment: round2(originalPayment) };
+      }
+      const baseDate = resolveBaseDate(mortgageStartDate);
 
       let month = 0;
       let balance = principal;
@@ -571,18 +585,27 @@
 
       let currentRequiredPayment = originalPayment;
       let combinedActive = false;
-      let termAfterPrepayMonths = totalMonths;
 
       while (balance > 0.000001 && month < 1200) {
         month += 1;
 
         const balanceBeforePayment = balance;
 
-        // Проценты за месяц: остаток × месячная ставка
-        const interest = balanceBeforePayment * r;
+        // Проценты за период: посуточная сумма (банковская модель)
+        const periodDays = getPeriodDays(month, baseDate);
+        let interest = 0;
+        const tempBalance = balanceBeforePayment;
+        let currentDate = addMonths(baseDate, month - 2);
+        for (let d = 0; d < periodDays; d += 1) {
+          const yearDays = isLeapYear(currentDate.getFullYear()) ? 366 : 365;
+          interest += tempBalance * effectiveAnnualRate / yearDays;
+          currentDate.setDate(currentDate.getDate() + 1);
+        }
+        interest = round2(interest);
 
-        // В комбинированной стратегии клиент платит исходный платеж A
-        let paymentForThisMonth = strategy === 'combined' ? originalPayment : currentRequiredPayment;
+        // Для комбинированной стратегии "Платеж" берется из обязательного платежа (как в "уменьшение платежа"),
+        // а разница до исходного аннуитета уходит в "Доп. погашение".
+        let paymentForThisMonth = currentRequiredPayment;
         paymentForThisMonth = Math.min(paymentForThisMonth, balanceBeforePayment + interest);
 
         // Тело кредита = платёж − проценты
@@ -602,7 +625,8 @@
           const nRemain = Math.max(1, totalMonths - month);
 
           if (strategy === 'term') {
-            termAfterPrepayMonths = remainingMonthsForFixedPayment(Bnew, originalPayment, r);
+            // В режиме "уменьшение срока" сохраняем обязательный платёж.
+            // Фактический срок берется по длине рассчитанных records.
           } else if (strategy === 'payment') {
             currentRequiredPayment = calculateMonthlyPayment(Bnew, annualRate, nRemain);
           } else if (strategy === 'combined') {
@@ -630,21 +654,20 @@
 
         records.push({
           month,
+          startBalance: round2(balanceBeforePayment),
           payment: round2(paymentForThisMonth),
+          requiredPayment: round2(paymentForThisMonth),
           interest: round2(interest),
           principal: round2(principalPart),
           extra: round2(userExtra + combinedExtra),
+          totalPayment: round2(paymentForThisMonth + userExtra + combinedExtra),
           balance: round2(balance)
         });
       }
 
-      const effectiveMonths = strategy === 'term'
-        ? Math.min(records.length, Math.ceil(termAfterPrepayMonths || records.length))
-        : records.length;
-
       return {
         records,
-        totalMonths: effectiveMonths,
+        totalMonths: records.length,
         totalInterest: round2(totalInterest),
         monthlyPayment: round2(originalPayment)
       };
@@ -694,14 +717,25 @@
       return values;
     }
 
+    function getScenarioDisplayRecords(scenarioKey) {
+      const scenario = scenarios[scenarioKey];
+      if (!scenario) return [];
+      return applyEffectiveRate(scenario.records);
+    }
+
     function renderChart(data) {
+      const baselineRecords = getScenarioDisplayRecords('baseline');
+      const termRecords = getScenarioDisplayRecords('term');
+      const paymentRecords = getScenarioDisplayRecords('payment');
+      const combinedRecords = getScenarioDisplayRecords('combined');
+
       const maxLen = Math.max(
-        data.baseline.records.length,
-        data.term.records.length,
-        data.payment.records.length,
-        data.combined.records.length
+        baselineRecords.length,
+        termRecords.length,
+        paymentRecords.length,
+        combinedRecords.length
       );
-      const baseDate = els.mortgageStartDate.value ? new Date(`${els.mortgageStartDate.value}T00:00:00`) : new Date();
+      const baseDate = resolveBaseDate(els.mortgageStartDate.value);
       const labels = Array.from({ length: maxLen }, (_, i) => {
         const d = addMonths(baseDate, i);
         const y = d.getFullYear();
@@ -710,10 +744,10 @@
       });
 
       const datasets = [
-        { label: 'Без досрочного', borderColor: '#64748b', data: buildBalanceSeries(data.baseline.records, maxLen) },
-        { label: 'Уменьшение срока', borderColor: '#2563eb', data: buildBalanceSeries(data.term.records, maxLen) },
-        { label: 'Уменьшение платежа', borderColor: '#f59e0b', data: buildBalanceSeries(data.payment.records, maxLen) },
-        { label: 'Комбинированная стратегия', borderColor: '#059669', data: buildBalanceSeries(data.combined.records, maxLen) }
+        { label: 'Без досрочного', borderColor: '#64748b', data: buildBalanceSeries(baselineRecords, maxLen) },
+        { label: 'Уменьшение срока', borderColor: '#2563eb', data: buildBalanceSeries(termRecords, maxLen) },
+        { label: 'Уменьшение платежа', borderColor: '#f59e0b', data: buildBalanceSeries(paymentRecords, maxLen) },
+        { label: 'Комбинированная стратегия', borderColor: '#059669', data: buildBalanceSeries(combinedRecords, maxLen) }
       ].map(d => ({ ...d, pointRadius: 0, tension: 0.2, borderWidth: 2, spanGaps: false }));
 
       if (chart) chart.destroy();
@@ -765,18 +799,36 @@
       return d;
     }
 
+    function resolveBaseDate(dateString) {
+      if (dateString) return new Date(`${dateString}T00:00:00`);
+      return new Date();
+    }
+
+    function isLeapYear(year) {
+      return (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+    }
+
     function formatMonthDate(dateObj) {
       return new Intl.DateTimeFormat('ru-RU', { year: 'numeric', month: 'long' }).format(dateObj);
     }
 
+    function formatPaymentDate(dateObj) {
+      return new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(dateObj);
+    }
+
+    function getPeriodDays(month, baseDate = resolveBaseDate(els.mortgageStartDate.value)) {
+      const periodStart = addMonths(baseDate, month - 2);
+      const periodEnd = addMonths(baseDate, month - 1);
+      const oneDayMs = 24 * 60 * 60 * 1000;
+      return Math.max(1, Math.round((periodEnd - periodStart) / oneDayMs));
+    }
+
     function renderTable(records, scenarioKey) {
       currentTableScenarioKey = scenarioKey || els.tableScenario.value || 'baseline';
-      const displayRecords = applyEffectiveRate(records, currentTableScenarioKey);
-      const hasOverride = effectiveRateOverride[currentTableScenarioKey] !== undefined;
+      const displayRecords = applyEffectiveRate(records);
+      const hasOverride = effectiveRateOverride !== null;
 
-      const baseDate = els.mortgageStartDate.value
-        ? new Date(`${els.mortgageStartDate.value}T00:00:00`)
-        : new Date();
+      const baseDate = resolveBaseDate(els.mortgageStartDate.value);
 
       // Кнопка сброса
       let resetBtn = document.getElementById('resetOverridesBtn');
@@ -787,8 +839,7 @@
         resetBtn.style.marginLeft = '10px';
         resetBtn.textContent = 'Сбросить корректировку';
         resetBtn.addEventListener('click', () => {
-          delete effectiveRateOverride[currentTableScenarioKey];
-          updateTableBySelection();
+          resetCalibrationAndRecalculate();
         });
         els.tableScenario.parentElement.appendChild(resetBtn);
       }
@@ -804,7 +855,7 @@
         wrap.after(rateInfo);
       }
       if (hasOverride) {
-        const annualPct = (effectiveRateOverride[currentTableScenarioKey] * 12 * 100).toFixed(4);
+        const annualPct = (effectiveRateOverride * 100).toFixed(4);
         rateInfo.textContent = `✅ Скорректированная ставка: ${annualPct}% годовых (из выписки). Вся таблица пересчитана.`;
       } else {
         rateInfo.textContent = '✏️ Нажмите на ячейку «Проценты» в строке 1, чтобы ввести реальное значение из выписки банка — вся таблица пересчитается автоматически.';
@@ -825,13 +876,14 @@
 
         return `
         <tr>
-          <td>${formatMonthDate(rowDate)}</td>
+          <td>${formatPaymentDate(rowDate)}</td>
           <td>${r.month}</td>
-          <td>${formatMoney(r.payment)}</td>
+          <td>${formatMoney(r.startBalance)}</td>
           ${interestCell}
           <td>${formatMoney(r.principal)}</td>
+          <td>${formatMoney(r.requiredPayment ?? r.payment)}</td>
           <td>${formatMoney(r.extra)}</td>
-          <td>${formatMoney(r.balance)}</td>
+          <td>${formatMoney(r.totalPayment ?? (r.payment + r.extra))}</td>
         </tr>
       `;
       }).join('');
@@ -848,12 +900,13 @@
 
       // Начальный остаток (до первого платежа)
       const rec0 = scenario.records[0];
-      const initialBalance = round2(rec0.balance + rec0.principal + rec0.extra);
+      const initialBalance = round2(rec0.startBalance ?? (rec0.balance + rec0.principal + rec0.extra));
+      const daysInMonth1 = getPeriodDays(1);
 
       // Показываем текущее значение процентов в поле
-      const curRate = effectiveRateOverride[key];
-      const displayVal = curRate !== undefined
-        ? round2(curRate * initialBalance)
+      const curRate = effectiveRateOverride;
+      const displayVal = curRate !== null
+        ? round2((curRate * initialBalance * daysInMonth1) / 365)
         : rec0.interest;
 
       cell.innerHTML = '';
@@ -868,12 +921,14 @@
       function commit() {
         const val = parseRuNumber(input.value);
         if (val > 0 && initialBalance > 0) {
-          // r_eff = проценты_м1 / остаток_до_м1  →  вся таблица пересчитается
-          effectiveRateOverride[key] = val / initialBalance;
+          // annual_eff = проценты_м1 * 365 / (остаток_до_м1 * days_м1)
+          effectiveRateOverride = (val * 365) / (initialBalance * daysInMonth1);
+          els.firstStatementInterest.value = formatRuNumber(val);
         } else {
-          delete effectiveRateOverride[key];
+          effectiveRateOverride = null;
+          els.firstStatementInterest.value = '';
         }
-        updateTableBySelection();
+        calculateAll();
       }
 
       input.addEventListener('blur', commit);
@@ -886,38 +941,47 @@
 
     // ─── Корректировка эффективной ставки через первую строку ───────────────
     // Пользователь вводит реальные проценты за месяц 1 из банковской выписки.
-    // r_eff = interest_1 / balance_0
-    // Затем ВСЯ таблица пересчитывается по цепочке:
-    //   I_n = B_{n-1} × r_eff
+    // annual_eff = interest_1 * 365 / (balance_0 * days_1)
+    // Затем ВСЯ таблица (для всех сценариев) пересчитывается по цепочке:
+    //   I_n = B_{n-1} * annual_eff * days_n / 365
     //   тело_n = платёж − I_n
-    //   B_n = B_{n-1} − тело_n
+    //   B_n = B_{n-1} − тело_n − досрочное_n
     // ────────────────────────────────────────────────────────────────────────
-    let effectiveRateOverride = {};
+    let effectiveRateOverride = null;
+    let lastCustomStartMonth = 2;
 
-    function applyEffectiveRate(records, scenarioKey) {
-      const r = effectiveRateOverride[scenarioKey];
-      if (r === undefined || records.length === 0) return records;
+    function parseStartMonth(rawValue) {
+      const month = Number.parseInt(String(rawValue), 10);
+      return Number.isFinite(month) ? month : 1;
+    }
 
-      // Начальный остаток до первого платежа
-      const initialBalance = round2(records[0].balance + records[0].principal + records[0].extra);
-      const fixedPayment   = records[0].payment;
+    function getLoanMonthsLimit() {
+      const years = Math.max(1, Number(els.loanYears.value));
+      return Math.max(1, Math.round(years * 12));
+    }
 
-      const adjusted = [];
-      let balance = initialBalance;
+    function updatePrepayStartMonthField() {
+      const limit = getLoanMonthsLimit();
+      const type = els.prepayType.value;
+      els.prepayStartMonth.max = String(limit);
 
-      for (const rec of records) {
-        // 1. Проценты = остаток × r_eff
-        const interest  = round2(balance * r);
-        // 2. Тело = платёж − проценты (не больше остатка)
-        const principal = round2(Math.min(fixedPayment - interest, balance));
-        // 3. Новый остаток = старый − тело − досрочное погашение
-        const newBalance = round2(Math.max(0, balance - principal - rec.extra));
-
-        adjusted.push({ ...rec, interest, principal, payment: round2(interest + principal), balance: newBalance });
-        balance = newBalance;
-        if (balance <= 0) break;
+      if (type === 'monthlyAll') {
+        lastCustomStartMonth = Math.min(limit, Math.max(1, parseStartMonth(els.prepayStartMonth.value)));
+        els.prepayStartMonth.value = '1';
+        els.prepayStartMonth.readOnly = true;
+        return;
       }
-      return adjusted;
+
+      const fallback = Math.min(limit, Math.max(1, lastCustomStartMonth));
+      const current = Math.min(limit, Math.max(1, parseStartMonth(els.prepayStartMonth.value) || fallback));
+      els.prepayStartMonth.readOnly = false;
+      els.prepayStartMonth.value = String(current);
+      lastCustomStartMonth = current;
+    }
+
+    function applyEffectiveRate(records) {
+      // Единая расчетная модель уже применяется в simulateLoan().
+      return records;
     }
 
     // Текущий ключ сценария, показанного в таблице
@@ -960,6 +1024,36 @@
       };
     }
 
+    function hasRequiredInputs() {
+      return [
+        els.propertyCost.value,
+        els.initialPayment.value,
+        els.annualRate.value,
+        els.loanYears.value,
+        els.mortgageStartDate.value
+      ].every(v => String(v || '').trim() !== '');
+    }
+
+    function showEmptyState(message = 'Введите параметры кредита и дату первого платежа, чтобы выполнить расчет.') {
+      els.monthlyPayment.value = '';
+      els.loanAmount.value = '';
+      els.resultsCards.innerHTML = `<div class="hint">${message}</div>`;
+      els.amortizationBody.innerHTML = `<tr><td colspan="8">${message}</td></tr>`;
+      els.statusText.textContent = 'Ожидание ввода параметров.';
+      if (chart) {
+        chart.destroy();
+        chart = null;
+      }
+    }
+
+    function calibrateEffectiveRateFromFirstStatementInterest(balance0, baseDate) {
+      const interest1 = parseRuNumber(els.firstStatementInterest.value);
+      const days1 = getPeriodDays(1, baseDate);
+      if (balance0 <= 0 || interest1 <= 0 || days1 <= 0) return false;
+      effectiveRateOverride = (interest1 * 365) / (balance0 * days1);
+      return true;
+    }
+
     function updateTableBySelection() {
       const names = {
         baseline: 'Без досрочного погашения',
@@ -972,6 +1066,14 @@
       if (scenario) renderTable(scenario.records, key);
     }
 
+    function resetCalibrationAndRecalculate() {
+      if (effectiveRateOverride !== null) {
+        effectiveRateOverride = null;
+      }
+      els.firstStatementInterest.value = '';
+      calculateAll();
+    }
+
     function saveState() {
       const selectedStrategy = [...els.strategyRadios].find(r => r.checked)?.value || 'term';
       const state = {
@@ -980,7 +1082,8 @@
           initialPayment: parseRuNumber(els.initialPayment.value),
           annualRate: Number(els.annualRate.value),
           loanYears: Number(els.loanYears.value),
-          mortgageStartDate: els.mortgageStartDate.value
+          mortgageStartDate: els.mortgageStartDate.value,
+          firstStatementInterest: parseRuNumber(els.firstStatementInterest.value)
         },
         earlyPayments,
         selectedStrategy,
@@ -996,11 +1099,24 @@
       try {
         const state = JSON.parse(raw);
         if (state.inputs) {
-          els.propertyCost.value = formatRuNumber(state.inputs.propertyCost ?? parseRuNumber(els.propertyCost.value));
-          els.initialPayment.value = formatRuNumber(state.inputs.initialPayment ?? parseRuNumber(els.initialPayment.value));
-          els.annualRate.value = state.inputs.annualRate ?? els.annualRate.value;
-          els.loanYears.value = state.inputs.loanYears ?? els.loanYears.value;
-          els.mortgageStartDate.value = state.inputs.mortgageStartDate ?? els.mortgageStartDate.value;
+          if (state.inputs.propertyCost !== undefined && state.inputs.propertyCost !== null && state.inputs.propertyCost !== '') {
+            els.propertyCost.value = formatRuNumber(state.inputs.propertyCost);
+          }
+          if (state.inputs.initialPayment !== undefined && state.inputs.initialPayment !== null && state.inputs.initialPayment !== '') {
+            els.initialPayment.value = formatRuNumber(state.inputs.initialPayment);
+          }
+          if (state.inputs.annualRate !== undefined && state.inputs.annualRate !== null && state.inputs.annualRate !== '') {
+            els.annualRate.value = state.inputs.annualRate;
+          }
+          if (state.inputs.loanYears !== undefined && state.inputs.loanYears !== null && state.inputs.loanYears !== '') {
+            els.loanYears.value = state.inputs.loanYears;
+          }
+          if (state.inputs.mortgageStartDate) {
+            els.mortgageStartDate.value = state.inputs.mortgageStartDate;
+          }
+          if (state.inputs.firstStatementInterest !== undefined && state.inputs.firstStatementInterest !== null && state.inputs.firstStatementInterest !== '') {
+            els.firstStatementInterest.value = formatRuNumber(state.inputs.firstStatementInterest);
+          }
         }
         if (Array.isArray(state.earlyPayments)) {
           earlyPayments = state.earlyPayments
@@ -1021,6 +1137,8 @@
         if (state.darkTheme) {
           document.body.classList.add('theme-dark');
           els.themeToggle.textContent = 'Светлый режим';
+        } else {
+          els.themeToggle.textContent = 'Темный режим';
         }
       } catch (e) {
         console.warn('Не удалось загрузить сохраненные данные:', e);
@@ -1028,17 +1146,34 @@
     }
 
     function calculateAll() {
+      if (!hasRequiredInputs()) {
+        scenarios = {};
+        showEmptyState();
+        saveState();
+        return;
+      }
+
       const data = getInputData();
+      const baseDate = resolveBaseDate(data.mortgageStartDate);
       const principal = Math.max(0, data.propertyCost - data.initialPayment);
       const totalMonths = data.loanYears * 12;
       const monthly = calculateMonthlyPayment(principal, data.annualRate, totalMonths);
       els.monthlyPayment.value = formatMoney(monthly);
+      els.loanAmount.value = formatMoney(principal);
+
+      if (!calibrateEffectiveRateFromFirstStatementInterest(principal, baseDate) && effectiveRateOverride === null) {
+        scenarios = {};
+        showEmptyState('Введите проценты 1-го платежа из выписки для калибровки ставки.');
+        saveState();
+        return;
+      }
 
       const args = {
         principal,
         annualRate: data.annualRate,
         years: data.loanYears,
-        payments: earlyPayments
+        payments: earlyPayments,
+        mortgageStartDate: data.mortgageStartDate
       };
 
       scenarios = {
@@ -1068,6 +1203,8 @@
       els.prepayAmount.value = formatRuNumber(32000);
       els.prepayStartMonth.value = '2';
       els.prepayType.value = 'once';
+      lastCustomStartMonth = 2;
+      updatePrepayStartMonthField();
       els.addPrepayBtn.textContent = 'Добавить платеж';
       els.cancelEditBtn.style.display = 'none';
     }
@@ -1077,13 +1214,16 @@
       els.prepayAmount.value = formatRuNumber(payment.amount);
       els.prepayStartMonth.value = String(payment.startMonth);
       els.prepayType.value = payment.type;
+      if (payment.type !== 'monthlyAll') lastCustomStartMonth = Math.max(1, Number(payment.startMonth) || 1);
+      updatePrepayStartMonthField();
       els.addPrepayBtn.textContent = 'Сохранить изменения';
       els.cancelEditBtn.style.display = 'inline-block';
     }
 
     function handleAddOrUpdatePrepay() {
       const amount = Math.max(0, parseRuNumber(els.prepayAmount.value));
-      const startMonth = Math.max(1, Number(els.prepayStartMonth.value));
+      const monthLimit = getLoanMonthsLimit();
+      const startMonth = Math.min(monthLimit, Math.max(1, parseStartMonth(els.prepayStartMonth.value)));
       const type = els.prepayType.value;
 
       if (amount <= 0) {
@@ -1096,6 +1236,7 @@
         startMonth: type === 'monthlyAll' ? 1 : startMonth,
         type: ['once', 'monthlyFrom', 'monthlyAll'].includes(type) ? type : 'once'
       };
+      if (type !== 'monthlyAll') lastCustomStartMonth = startMonth;
 
       if (editPaymentId) {
         earlyPayments = earlyPayments.map(p => p.id === editPaymentId ? { ...p, ...payload } : p);
@@ -1141,9 +1282,21 @@
 
     moneyInputs.forEach(wireMoneyInput);
 
-    [els.annualRate, els.loanYears, els.mortgageStartDate].forEach(el => {
+    [els.annualRate, els.loanYears].forEach(el => {
       el.addEventListener('input', calculateAll);
       el.addEventListener('change', calculateAll);
+    });
+
+    els.mortgageStartDate.addEventListener('input', resetCalibrationAndRecalculate);
+    els.mortgageStartDate.addEventListener('change', resetCalibrationAndRecalculate);
+
+    els.loanYears.addEventListener('input', updatePrepayStartMonthField);
+    els.prepayType.addEventListener('change', updatePrepayStartMonthField);
+    els.prepayStartMonth.addEventListener('input', () => {
+      if (els.prepayType.value === 'monthlyAll') return;
+      const monthLimit = getLoanMonthsLimit();
+      const value = Math.min(monthLimit, Math.max(1, parseStartMonth(els.prepayStartMonth.value)));
+      lastCustomStartMonth = value;
     });
 
     els.tableScenario.addEventListener('change', () => {
@@ -1166,7 +1319,7 @@
     els.themeToggle.addEventListener('click', () => {
       document.body.classList.toggle('theme-dark');
       const dark = document.body.classList.contains('theme-dark');
-      els.themeToggle.textContent = dark ? 'Светлый режим' : 'Черный режим';
+      els.themeToggle.textContent = dark ? 'Светлый режим' : 'Темный режим';
       saveState();
       if (Object.keys(scenarios).length) renderChart(scenarios);
     });
@@ -1191,10 +1344,13 @@
     // Инициализация
     loadState();
     moneyInputs.forEach(input => {
-      input.value = formatRuNumber(parseRuNumber(input.value));
+      if (String(input.value || '').trim() !== '') {
+        input.value = formatRuNumber(parseRuNumber(input.value));
+      }
     });
     updateStrategySelection();
     renderEarlyPaymentsList();
+    updatePrepayStartMonthField();
     calculateAll();
     updateScrollToggle();
   </script>
