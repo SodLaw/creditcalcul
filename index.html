@@ -294,6 +294,19 @@
     th { background: color-mix(in srgb, var(--card) 82%, var(--text) 18%); position: sticky; top: 0; }
     th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
 
+    .editable-cell {
+      cursor: pointer;
+      position: relative;
+    }
+    .editable-cell:hover {
+      background: color-mix(in srgb, var(--primary) 12%, transparent);
+      outline: 1px dashed var(--primary);
+    }
+    .cell-edited {
+      background: color-mix(in srgb, var(--success) 15%, transparent) !important;
+      font-weight: 700;
+    }
+
     @media (max-width: 980px) {
       .prepay-grid { grid-template-columns: 1fr; }
     }
@@ -425,7 +438,7 @@
               <th>Дата</th>
               <th>Месяц</th>
               <th>Платеж</th>
-              <th>Проценты</th>
+              <th title="Нажмите на ячейку строки 1, чтобы ввести реальное значение из выписки">Проценты ✏️</th>
               <th>Тело кредита</th>
               <th>Доп. погашение</th>
               <th>Остаток долга</th>
@@ -541,6 +554,11 @@
       return Math.log(payment / denom) / Math.log(1 + r);
     }
 
+    // ─── СБЕРБАНК-формула ───────────────────────────────────────────────────
+    // r = годовая_ставка / 12 / 100  (единая месячная ставка, как в Сбере)
+    // Проценты = остаток × r
+    // Тело = платёж − проценты
+    // ────────────────────────────────────────────────────────────────────────
     function simulateLoan({ principal, annualRate, years, strategy, payments }) {
       const r = annualRate / 100 / 12;
       const totalMonths = years * 12;
@@ -558,18 +576,18 @@
       while (balance > 0.000001 && month < 1200) {
         month += 1;
 
-        const monthsRemainPlanned = Math.max(1, totalMonths - month + 1);
         const balanceBeforePayment = balance;
+
+        // Проценты за месяц: остаток × месячная ставка
         const interest = balanceBeforePayment * r;
 
         // В комбинированной стратегии клиент платит исходный платеж A
         let paymentForThisMonth = strategy === 'combined' ? originalPayment : currentRequiredPayment;
         paymentForThisMonth = Math.min(paymentForThisMonth, balanceBeforePayment + interest);
 
-        // Строгое обновление остатка по формуле B_k (k = 1)
-        let balanceAfterRegular = remainingBalanceByFormula(balanceBeforePayment, paymentForThisMonth, r, 1);
-        balanceAfterRegular = Math.max(0, balanceAfterRegular);
-        let principalPart = Math.max(0, balanceBeforePayment - balanceAfterRegular);
+        // Тело кредита = платёж − проценты
+        const principalPart = Math.max(0, paymentForThisMonth - interest);
+        let balanceAfterRegular = Math.max(0, balanceBeforePayment - principalPart);
 
         // Пользовательские досрочные платежи (разовые и регулярные)
         let userExtra = 0;
@@ -584,24 +602,27 @@
           const nRemain = Math.max(1, totalMonths - month);
 
           if (strategy === 'term') {
-            // A фиксирован, ищем новый срок n_new
             termAfterPrepayMonths = remainingMonthsForFixedPayment(Bnew, originalPayment, r);
           } else if (strategy === 'payment') {
-            // Срок фиксирован, пересчитываем платеж
             currentRequiredPayment = calculateMonthlyPayment(Bnew, annualRate, nRemain);
           } else if (strategy === 'combined') {
-            // Банк пересчитывает обязательный платеж, клиент продолжает платить A
             currentRequiredPayment = calculateMonthlyPayment(Bnew, annualRate, nRemain);
             combinedActive = true;
           }
         }
 
-        // Комбинированная стратегия: extra = A - A_new каждый месяц после активации
+        // Комбинированная стратегия: разница A_orig − A_req идёт в досрочное погашение
+        // После каждого такого погашения банк пересчитывает A_req ещё ниже → эффект нарастает
         let combinedExtra = 0;
         if (strategy === 'combined' && combinedActive && balanceAfterRegular > 0) {
           combinedExtra = Math.max(0, originalPayment - currentRequiredPayment);
           combinedExtra = Math.min(combinedExtra, balanceAfterRegular);
           balanceAfterRegular -= combinedExtra;
+          // Пересчёт A_req для следующего месяца с учётом только что внесённой доплаты
+          if (balanceAfterRegular > 0) {
+            const nNext = Math.max(1, totalMonths - month);
+            currentRequiredPayment = calculateMonthlyPayment(balanceAfterRegular, annualRate, nNext);
+          }
         }
 
         balance = Math.max(0, balanceAfterRegular);
@@ -748,16 +769,66 @@
       return new Intl.DateTimeFormat('ru-RU', { year: 'numeric', month: 'long' }).format(dateObj);
     }
 
-    function renderTable(records) {
-      const baseDate = els.mortgageStartDate.value ? new Date(`${els.mortgageStartDate.value}T00:00:00`) : new Date();
-      els.amortizationBody.innerHTML = records.map(r => {
+    function renderTable(records, scenarioKey) {
+      currentTableScenarioKey = scenarioKey || els.tableScenario.value || 'baseline';
+      const displayRecords = applyEffectiveRate(records, currentTableScenarioKey);
+      const hasOverride = effectiveRateOverride[currentTableScenarioKey] !== undefined;
+
+      const baseDate = els.mortgageStartDate.value
+        ? new Date(`${els.mortgageStartDate.value}T00:00:00`)
+        : new Date();
+
+      // Кнопка сброса
+      let resetBtn = document.getElementById('resetOverridesBtn');
+      if (!resetBtn) {
+        resetBtn = document.createElement('button');
+        resetBtn.id = 'resetOverridesBtn';
+        resetBtn.className = 'secondary';
+        resetBtn.style.marginLeft = '10px';
+        resetBtn.textContent = 'Сбросить корректировку';
+        resetBtn.addEventListener('click', () => {
+          delete effectiveRateOverride[currentTableScenarioKey];
+          updateTableBySelection();
+        });
+        els.tableScenario.parentElement.appendChild(resetBtn);
+      }
+      resetBtn.style.display = hasOverride ? 'inline-block' : 'none';
+
+      // Строка-подсказка с эффективной ставкой
+      let rateInfo = document.getElementById('effectiveRateInfo');
+      if (!rateInfo) {
+        rateInfo = document.createElement('div');
+        rateInfo.id = 'effectiveRateInfo';
+        rateInfo.style.cssText = 'font-size:13px;color:var(--success);margin-top:6px;font-weight:600;min-height:18px;';
+        const wrap = els.tableScenario.closest('div');
+        wrap.after(rateInfo);
+      }
+      if (hasOverride) {
+        const annualPct = (effectiveRateOverride[currentTableScenarioKey] * 12 * 100).toFixed(4);
+        rateInfo.textContent = `✅ Скорректированная ставка: ${annualPct}% годовых (из выписки). Вся таблица пересчитана.`;
+      } else {
+        rateInfo.textContent = '✏️ Нажмите на ячейку «Проценты» в строке 1, чтобы ввести реальное значение из выписки банка — вся таблица пересчитается автоматически.';
+        rateInfo.style.color = 'var(--muted)';
+      }
+      if (hasOverride) rateInfo.style.color = 'var(--success)';
+
+      els.amortizationBody.innerHTML = displayRecords.map((r, idx) => {
         const rowDate = addMonths(baseDate, r.month - 1);
+        const isFirst = idx === 0;
+        const edited  = hasOverride && isFirst;
+
+        const interestCell = isFirst
+          ? `<td class="editable-cell${edited ? ' cell-edited' : ''}"
+                data-month="${r.month}" data-field="interest"
+                title="Введите реальный процент из выписки — вся таблица пересчитается">${formatMoney(r.interest)}</td>`
+          : `<td>${formatMoney(r.interest)}</td>`;
+
         return `
         <tr>
           <td>${formatMonthDate(rowDate)}</td>
           <td>${r.month}</td>
           <td>${formatMoney(r.payment)}</td>
-          <td>${formatMoney(r.interest)}</td>
+          ${interestCell}
           <td>${formatMoney(r.principal)}</td>
           <td>${formatMoney(r.extra)}</td>
           <td>${formatMoney(r.balance)}</td>
@@ -765,6 +836,92 @@
       `;
       }).join('');
     }
+
+    // Клик по ячейке «Проценты» первой строки
+    els.amortizationBody.addEventListener('click', function(e) {
+      const cell = e.target.closest('.editable-cell');
+      if (!cell || cell.querySelector('input')) return;
+
+      const key = currentTableScenarioKey;
+      const scenario = scenarios[key];
+      if (!scenario || !scenario.records.length) return;
+
+      // Начальный остаток (до первого платежа)
+      const rec0 = scenario.records[0];
+      const initialBalance = round2(rec0.balance + rec0.principal + rec0.extra);
+
+      // Показываем текущее значение процентов в поле
+      const curRate = effectiveRateOverride[key];
+      const displayVal = curRate !== undefined
+        ? round2(curRate * initialBalance)
+        : rec0.interest;
+
+      cell.innerHTML = '';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = String(displayVal).replace('.', ',');
+      input.style.cssText = 'width:100%;min-width:130px;font-size:13px;padding:2px 6px;';
+      cell.appendChild(input);
+      input.focus();
+      input.select();
+
+      function commit() {
+        const val = parseRuNumber(input.value);
+        if (val > 0 && initialBalance > 0) {
+          // r_eff = проценты_м1 / остаток_до_м1  →  вся таблица пересчитается
+          effectiveRateOverride[key] = val / initialBalance;
+        } else {
+          delete effectiveRateOverride[key];
+        }
+        updateTableBySelection();
+      }
+
+      input.addEventListener('blur', commit);
+      input.addEventListener('keydown', ev => {
+        if (ev.key === 'Enter')  { ev.preventDefault(); input.blur(); }
+        if (ev.key === 'Escape') { input.removeEventListener('blur', commit); updateTableBySelection(); }
+      });
+    });
+
+
+    // ─── Корректировка эффективной ставки через первую строку ───────────────
+    // Пользователь вводит реальные проценты за месяц 1 из банковской выписки.
+    // r_eff = interest_1 / balance_0
+    // Затем ВСЯ таблица пересчитывается по цепочке:
+    //   I_n = B_{n-1} × r_eff
+    //   тело_n = платёж − I_n
+    //   B_n = B_{n-1} − тело_n
+    // ────────────────────────────────────────────────────────────────────────
+    let effectiveRateOverride = {};
+
+    function applyEffectiveRate(records, scenarioKey) {
+      const r = effectiveRateOverride[scenarioKey];
+      if (r === undefined || records.length === 0) return records;
+
+      // Начальный остаток до первого платежа
+      const initialBalance = round2(records[0].balance + records[0].principal + records[0].extra);
+      const fixedPayment   = records[0].payment;
+
+      const adjusted = [];
+      let balance = initialBalance;
+
+      for (const rec of records) {
+        // 1. Проценты = остаток × r_eff
+        const interest  = round2(balance * r);
+        // 2. Тело = платёж − проценты (не больше остатка)
+        const principal = round2(Math.min(fixedPayment - interest, balance));
+        // 3. Новый остаток = старый − тело − досрочное погашение
+        const newBalance = round2(Math.max(0, balance - principal - rec.extra));
+
+        adjusted.push({ ...rec, interest, principal, payment: round2(interest + principal), balance: newBalance });
+        balance = newBalance;
+        if (balance <= 0) break;
+      }
+      return adjusted;
+    }
+
+    // Текущий ключ сценария, показанного в таблице
+    let currentTableScenarioKey = 'baseline';
 
     function renderEarlyPaymentsList() {
       if (!earlyPayments.length) {
@@ -812,7 +969,7 @@
       };
       const key = els.tableScenario.value;
       const scenario = scenarios[key] || scenarios.baseline;
-      if (scenario) renderTable(scenario.records);
+      if (scenario) renderTable(scenario.records, key);
     }
 
     function saveState() {
