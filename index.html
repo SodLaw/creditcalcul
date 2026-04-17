@@ -353,6 +353,10 @@
           <label for="monthlyPayment">Ежемесячный платеж (авторасчет)</label>
           <input id="monthlyPayment" type="text" readonly />
         </div>
+        <div class="field">
+          <label for="loanAmount">Сумма взятого долга (авторасчет)</label>
+          <input id="loanAmount" type="text" readonly />
+        </div>
       </div>
 
       <div class="field" style="margin-top: 12px;">
@@ -437,11 +441,13 @@
             <tr>
               <th>Дата</th>
               <th>Месяц</th>
-              <th>Платеж</th>
+              <th>Остаток на начало периода</th>
               <th title="Нажмите на ячейку строки 1, чтобы ввести реальное значение из выписки">Проценты ✏️</th>
-              <th>Тело кредита</th>
-              <th>Доп. погашение</th>
-              <th>Остаток долга</th>
+              <th>Основной долг</th>
+              <th>Обязательный платёж</th>
+              <th>Досрочно</th>
+              <th>Итоговый платёж</th>
+              <th>Остаток после платежа</th>
             </tr>
           </thead>
           <tbody id="amortizationBody"></tbody>
@@ -459,6 +465,7 @@
       annualRate: document.getElementById('annualRate'),
       loanYears: document.getElementById('loanYears'),
       monthlyPayment: document.getElementById('monthlyPayment'),
+      loanAmount: document.getElementById('loanAmount'),
       mortgageStartDate: document.getElementById('mortgageStartDate'),
       resultsCards: document.getElementById('resultsCards'),
       balanceChart: document.getElementById('balanceChart'),
@@ -631,10 +638,13 @@
 
         records.push({
           month,
+          startBalance: round2(balanceBeforePayment),
           payment: round2(paymentForThisMonth),
+          requiredPayment: round2(paymentForThisMonth),
           interest: round2(interest),
           principal: round2(principalPart),
           extra: round2(userExtra + combinedExtra),
+          totalPayment: round2(paymentForThisMonth + userExtra + combinedExtra),
           balance: round2(balance)
         });
       }
@@ -781,6 +791,10 @@
       return new Intl.DateTimeFormat('ru-RU', { year: 'numeric', month: 'long' }).format(dateObj);
     }
 
+    function formatPaymentDate(dateObj) {
+      return new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(dateObj);
+    }
+
     function getPeriodDays(month) {
       const baseDate = els.mortgageStartDate.value
         ? new Date(`${els.mortgageStartDate.value}T00:00:00`)
@@ -836,7 +850,7 @@
       if (hasOverride) rateInfo.style.color = 'var(--success)';
 
       els.amortizationBody.innerHTML = displayRecords.map((r, idx) => {
-        const rowDate = addMonths(baseDate, r.month - 1);
+        const rowDate = addMonths(baseDate, r.month);
         const isFirst = idx === 0;
         const edited  = hasOverride && isFirst;
 
@@ -848,12 +862,14 @@
 
         return `
         <tr>
-          <td>${formatMonthDate(rowDate)}</td>
+          <td>${formatPaymentDate(rowDate)}</td>
           <td>${r.month}</td>
-          <td>${formatMoney(r.payment)}</td>
+          <td>${formatMoney(r.startBalance)}</td>
           ${interestCell}
           <td>${formatMoney(r.principal)}</td>
+          <td>${formatMoney(r.requiredPayment ?? r.payment)}</td>
           <td>${formatMoney(r.extra)}</td>
+          <td>${formatMoney(r.totalPayment ?? (r.payment + r.extra))}</td>
           <td>${formatMoney(r.balance)}</td>
         </tr>
       `;
@@ -871,7 +887,7 @@
 
       // Начальный остаток (до первого платежа)
       const rec0 = scenario.records[0];
-      const initialBalance = round2(rec0.balance + rec0.principal + rec0.extra);
+      const initialBalance = round2(rec0.startBalance ?? (rec0.balance + rec0.principal + rec0.extra));
       const daysInMonth1 = getPeriodDays(1);
 
       // Показываем текущее значение процентов в поле
@@ -954,7 +970,7 @@
       if (annualRate === null || records.length === 0) return records;
 
       // Начальный остаток до первого платежа
-      const initialBalance = round2(records[0].balance + records[0].principal + records[0].extra);
+      const initialBalance = round2(records[0].startBalance ?? (records[0].balance + records[0].principal + records[0].extra));
       const fixedPayment = Math.max(0, parseRuNumber(els.monthlyPayment.value)) || round2(records[0].payment);
       const extraByMonth = new Map(records.map(rec => [rec.month, Math.max(0, Number(rec.extra) || 0)]));
 
@@ -965,19 +981,31 @@
 
       while (balance > 0 && month < hardLimit) {
         month += 1;
+        const startBalance = balance;
         const periodDays = getPeriodDays(month);
         // 1. Проценты = остаток × annual_eff × days / 365
-        const interest = round2((balance * annualRate * periodDays) / 365);
+        const interest = round2((startBalance * annualRate * periodDays) / 365);
         // 2. Тело = платёж − проценты (не больше остатка)
-        const principal = round2(Math.max(0, Math.min(fixedPayment - interest, balance)));
+        const principal = round2(Math.max(0, Math.min(fixedPayment - interest, startBalance)));
         const payment = round2(interest + principal);
         // 3. Досрочка берется из выбранного сценария в тот же месяц
-        const extra = round2(Math.min(extraByMonth.get(month) || 0, Math.max(0, balance - principal)));
+        const extra = round2(Math.min(extraByMonth.get(month) || 0, Math.max(0, startBalance - principal)));
         // 4. Новый остаток = старый − тело − досрочное погашение
-        const newBalance = round2(Math.max(0, balance - principal - extra));
+        const newBalance = round2(Math.max(0, startBalance - principal - extra));
         const baseRec = records[month - 1] || records[records.length - 1];
 
-        adjusted.push({ ...baseRec, month, payment, interest, principal, extra, balance: newBalance });
+        adjusted.push({
+          ...baseRec,
+          month,
+          startBalance: round2(startBalance),
+          requiredPayment: round2(payment),
+          payment: round2(payment),
+          interest,
+          principal,
+          extra,
+          totalPayment: round2(payment + extra),
+          balance: newBalance
+        });
         balance = newBalance;
       }
       return adjusted;
@@ -1098,6 +1126,7 @@
       const totalMonths = data.loanYears * 12;
       const monthly = calculateMonthlyPayment(principal, data.annualRate, totalMonths);
       els.monthlyPayment.value = formatMoney(monthly);
+      els.loanAmount.value = formatMoney(principal);
 
       const args = {
         principal,
